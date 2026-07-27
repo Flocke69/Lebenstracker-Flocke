@@ -8,10 +8,16 @@
  * im Bett und abends in der Umkleide geöffnet, oft bei schlechtem Empfang.
  * Warten auf ein Netz, das gar nicht antwortet, ist die schlechtere Erfahrung.
  *
- * CACHE_VERSION bei jedem Deploy erhöhen.
+ * CACHE_VERSION MUSS bei jeder Änderung an der App erhöht werden. Ohne das
+ * bleiben alte Dateien im Cache liegen: der Wechsel der Version ist das
+ * Signal, unter dem `activate` die alten Caches löscht.
+ *
+ * Verlauf:
+ *   v1  Phase 1 — Grundgerüst, Onboarding, Tagesziele
+ *   v2  Phase 2 — Check-in, Bereitschaft, Dezimaleingabe mit Komma
  */
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
