@@ -132,18 +132,40 @@ export function weekKeys(key) {
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
-/** Tage bis zum nächsten Auftreten dieses Wochentags. 0, wenn heute. */
+/**
+ * Tage BIS zum nächsten Auftreten dieses Wochentags. 0, wenn heute.
+ *
+ * Für Trainingsregeln ist das die Frage nach der Frische: wie viel Zeit
+ * bleibt noch, um sich bis zum Spiel zu erholen.
+ */
 export function daysUntilWeekday(key, weekday) {
   assertWeekday(weekday);
   return (weekday - weekdayOf(key) + 7) % 7;
 }
 
 /**
+ * Tage SEIT dem letzten Auftreten dieses Wochentags. 0, wenn heute.
+ *
+ * Die Gegenfrage: wie weit ist das Spiel her, also wie erholt bin ich
+ * überhaupt schon wieder.
+ */
+export function daysSinceWeekday(key, weekday) {
+  assertWeekday(weekday);
+  return (weekdayOf(key) - weekday + 7) % 7;
+}
+
+/**
  * Kleinster Abstand zu diesem Wochentag, vorwärts oder rückwärts (0–3).
  *
- * Das ist die Funktion, die die Spieltags-Regel trägt: "wie weit ist der
- * Spieltag entfernt" muss auch die Tage NACH dem Spiel erfassen, weil die
- * Erholung dort noch läuft.
+ * NUR FÜR DIE ANZEIGE ("Spieltag ist in 3 Tagen"). Für Trainingsregeln ist
+ * dieser Wert ungeeignet, weil er zwei verschiedene Dinge vermischt:
+ *
+ *   Vor dem Spiel zählt Frische   → daysUntilWeekday, Schwelle 3
+ *   Nach dem Spiel zählt Erholung → daysSinceWeekday, Schwelle 2
+ *
+ * Mit einem gemeinsamen Wert bekämen Dienstag und Freitag bei einem
+ * Sonntagsspiel denselben Abstand 2 — obwohl Dienstag 5 Tage VOR dem Spiel
+ * liegt und Freitag nur 2. Siehe tests/dates.test.js.
  */
 export function daysToNearestWeekday(key, weekday) {
   const forward = daysUntilWeekday(key, weekday);

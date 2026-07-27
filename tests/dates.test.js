@@ -11,6 +11,7 @@ import {
   weekKeys,
   monthDays,
   daysUntilWeekday,
+  daysSinceWeekday,
   daysToNearestWeekday,
   isSameMonth,
 } from '../js/lib/dates.js';
@@ -113,12 +114,66 @@ suite('dates — Wochen', () => {
   });
 
   test('daysToNearestWeekday liefert den kleinsten Abstand in beide Richtungen', () => {
-    // Diese Funktion trägt die Spieltags-Regel: sie beantwortet
-    // "wie weit ist der Spieltag entfernt", egal ob vor oder zurück.
+    // Nur für die Anzeige ("Spieltag ist in 3 Tagen"). Für Trainingsregeln
+    // ist dieser Wert UNGEEIGNET — siehe die Suite unten.
     eq(daysToNearestWeekday('2026-07-27', 6), 2, 'Mo → Sa: rückwärts 2 Tage');
     eq(daysToNearestWeekday('2026-07-29', 6), 3, 'Mi → Sa: 3 Tage in beide Richtungen');
     eq(daysToNearestWeekday('2026-07-31', 6), 1, 'Fr → Sa: 1 Tag');
     eq(daysToNearestWeekday('2026-08-01', 6), 0, 'Samstag selbst');
+  });
+
+  test('daysSinceWeekday zählt rückwärts, 0 wenn heute', () => {
+    eq(daysSinceWeekday('2026-07-27', 0), 1, 'Montag, Sonntag war gestern');
+    eq(daysSinceWeekday('2026-07-30', 0), 4, 'Donnerstag');
+    eq(daysSinceWeekday('2026-08-02', 0), 0, 'Sonntag selbst');
+  });
+
+  test('Vorwärts- und Rückwärtsabstand ergänzen sich zu 7 (außer am Tag selbst)', () => {
+    for (const key of ['2026-07-27', '2026-07-28', '2026-07-30', '2026-08-01']) {
+      const f = daysUntilWeekday(key, 0);
+      const b = daysSinceWeekday(key, 0);
+      eq(f + b, 7, `${key}: ${f} + ${b}`);
+    }
+    eq(daysUntilWeekday('2026-08-02', 0), 0, 'am Tag selbst beide 0');
+    eq(daysSinceWeekday('2026-08-02', 0), 0);
+  });
+});
+
+suite('dates — die beiden Abstände sind NICHT dasselbe', () => {
+  /* Flockes Woche: Mannschaftstraining Mittwoch, Spiel Sonntag.
+   * Sonntag = 0, Mittwoch = 3 (JS-Konvention).
+   *
+   * Diese Suite ist der Beleg dafür, warum die Regel zwei getrennte
+   * Schwellen braucht: vor dem Spiel zählt Frische, nach dem Spiel
+   * zählt die eigene Erholung. Ein gemeinsamer Wert würde Dienstag
+   * fälschlich ausschließen und Freitag fälschlich milder behandeln.
+   */
+  const WEEK = {
+    Mo: '2026-07-27', Di: '2026-07-28', Mi: '2026-07-29', Do: '2026-07-30',
+    Fr: '2026-07-31', Sa: '2026-08-01', So: '2026-08-02',
+  };
+  const MATCH = 0; // Sonntag
+
+  test('vor dem Spiel: Freitag und Samstag liegen zu dicht dran', () => {
+    eq(daysUntilWeekday(WEEK.Sa, MATCH), 1, 'Samstag: 1 Tag vor dem Spiel');
+    eq(daysUntilWeekday(WEEK.Fr, MATCH), 2, 'Freitag: 2 Tage');
+    eq(daysUntilWeekday(WEEK.Do, MATCH), 3, 'Donnerstag: 3 Tage — knapp genug');
+    eq(daysUntilWeekday(WEEK.Di, MATCH), 5, 'Dienstag: 5 Tage — reichlich');
+  });
+
+  test('nach dem Spiel: Montag ist noch zu nah dran', () => {
+    eq(daysSinceWeekday(WEEK.Mo, MATCH), 1, 'Montag: 1 Tag nach dem Spiel');
+    eq(daysSinceWeekday(WEEK.Di, MATCH), 2, 'Dienstag: 2 Tage');
+    eq(daysSinceWeekday(WEEK.Do, MATCH), 4, 'Donnerstag: 4 Tage');
+  });
+
+  test('der gemeinsame Abstand würde Dienstag und Freitag gleich behandeln', () => {
+    // Beide haben Abstand 2 — obwohl Dienstag 5 Tage VOR dem Spiel liegt
+    // und Freitag nur 2. Genau dieser Trugschluss wird hier festgehalten.
+    eq(daysToNearestWeekday(WEEK.Di, MATCH), 2);
+    eq(daysToNearestWeekday(WEEK.Fr, MATCH), 2);
+    eq(daysUntilWeekday(WEEK.Di, MATCH), 5, 'Dienstag ist weit vor dem Spiel');
+    eq(daysUntilWeekday(WEEK.Fr, MATCH), 2, 'Freitag ist dicht vor dem Spiel');
   });
 });
 
