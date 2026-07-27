@@ -36,14 +36,24 @@ ausschließlich Anwendungscode — **niemals Gesundheitsdaten** (siehe `.gitigno
 
 ## Lokal starten
 
-Kein Build, keine Dependencies, kein `npm`. Nur ein statischer Server, weil Service Worker und
+Kein Build, keine Dependencies, kein `npm` — nur ein statischer Server, weil Service Worker und
 ES-Module `file://` nicht mögen:
 
 ```bash
-python3 -m http.server 8080
+python3 tools/serve.py
 ```
 
-Dann `http://localhost:8080` öffnen.
+Dann `http://127.0.0.1:8080` öffnen.
+
+> **Nicht `python3 -m http.server` benutzen.** Browser halten ES-Module fest und ignorieren dabei
+> `Cache-Control: no-store`. Eine Kennung an der Adresse hilft nicht, weil relative Importe sie
+> nicht erben — die geänderte Datei wäre frisch, die von ihr importierten nicht. `tools/serve.py`
+> bildet deshalb `/v/<zahl>/pfad` auf `pfad` ab: ein **Pfad**-Präfix wird bei relativer Auflösung
+> mitgeführt. Zeigt der Browser trotzdem eine alte Fassung, `http://127.0.0.1:8080/v/2/index.html`
+> aufrufen und die Zahl hochzählen.
+>
+> Der Service Worker wird auf `localhost` und `127.0.0.1` bewusst nicht registriert — er liefert
+> zuerst aus dem Cache und würde beim Entwickeln dasselbe Problem erzeugen.
 
 ## Tests
 

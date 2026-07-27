@@ -162,6 +162,45 @@ suite('energy — Tagesziele', () => {
     isFinite_(t.carbsG);
   });
 
+  test('das Defizit lässt sich für einzelne Tagestypen aussetzen', () => {
+    // Am Spieltag mehrere hundert Kalorien zu kürzen ist die eine Stelle,
+    // an der ein Defizit die Fußballleistung wirklich kostet.
+    const mitDefizit = { ...base, kcalOffset: -500, offsetExemptDayTypes: ['match'] };
+
+    const spieltag = dayTargets({ ...mitDefizit, dayType: 'match' });
+    close(spieltag.kcal, 3158.75, 0.001, 'voller Bedarf am Spieltag');
+    eq(spieltag.offsetExempt, true);
+    close(spieltag.appliedOffset, 0);
+
+    const ruhetag = dayTargets({ ...mitDefizit, dayType: 'rest' });
+    close(ruhetag.kcal, 2436.75 - 500, 0.001, 'Defizit an allen anderen Tagen');
+    eq(ruhetag.offsetExempt, false);
+    close(ruhetag.appliedOffset, -500);
+  });
+
+  test('ohne Ausnahmen greift das Defizit überall', () => {
+    for (const dayType of DAY_TYPES) {
+      const t = dayTargets({ ...base, dayType, kcalOffset: -500 });
+      close(t.appliedOffset, -500, 0.001, dayType);
+      eq(t.offsetExempt, false);
+    }
+  });
+
+  test('unbekannte Tagestypen in der Ausnahmeliste werden abgewiesen', () => {
+    throws(() => dayTargets({ ...base, dayType: 'rest', offsetExemptDayTypes: ['urlaub'] }));
+    throws(() => dayTargets({ ...base, dayType: 'rest', offsetExemptDayTypes: 'match' }));
+  });
+
+  test('bei ausgesetztem Defizit stimmen die Makros weiterhin', () => {
+    const t = dayTargets({
+      ...base, dayType: 'match', kcalOffset: -500, offsetExemptDayTypes: ['match'],
+    });
+    const sum = t.proteinG * KCAL_PER_G.protein
+              + t.carbsG * KCAL_PER_G.carb
+              + t.fatG * KCAL_PER_G.fat;
+    close(sum, t.kcal, 0.001);
+  });
+
   test('das Ergebnis enthält BMR und Faktor zur Nachvollziehbarkeit', () => {
     const t = dayTargets({ ...base, dayType: 'team' });
     close(t.bmr, M_BMR, 0.001);

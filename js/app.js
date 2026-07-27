@@ -11,10 +11,11 @@ import { formatMonth, monthKey, todayKey } from './lib/dates.js';
 import { el, replace } from './views/dom.js';
 import * as todayView from './views/today.js';
 import * as trainingView from './views/training.js';
+import * as profileView from './views/profile.js';
 import * as onboardingView from './views/onboarding.js';
 import * as placeholderView from './views/placeholder.js';
 
-const VIEWS = { heute: todayView, training: trainingView };
+const VIEWS = { heute: todayView, training: trainingView, profil: profileView };
 
 const ROUTES = [
   { id: 'heute', label: 'Heute', glyph: '◎' },
@@ -29,8 +30,12 @@ const DEFAULT_ROUTE = 'heute';
 const store = createStore();
 const root = document.getElementById('app');
 
+/* Das Profil ist bewusst kein Reiter — es hängt an der Kopfzeile. */
+const EXTRA_ROUTES = ['profil'];
+
 function currentRoute() {
   const id = location.hash.replace(/^#\/?/, '');
+  if (EXTRA_ROUTES.includes(id)) return id;
   return ROUTES.some((r) => r.id === id) ? id : DEFAULT_ROUTE;
 }
 
@@ -85,7 +90,14 @@ function renderApp() {
   replace(root,
     el('header', { class: 'topbar' },
       el('span', { class: 'topbar__title', text: 'Lebenstracker' }),
-      el('span', { class: 'topbar__sub', text: formatMonth(monthKey(todayKey())) })),
+      el('button', {
+        type: 'button',
+        class: `topbar__link${route === 'profil' ? ' topbar__link--active' : ''}`,
+        onclick: () => navigate(route === 'profil' ? DEFAULT_ROUTE : 'profil'),
+        'aria-label': route === 'profil' ? 'Profil schließen' : 'Profil öffnen',
+      },
+        el('span', { class: 'topbar__sub', text: formatMonth(monthKey(todayKey())) }),
+        el('span', { class: 'topbar__gear', text: route === 'profil' ? '×' : '⚙', 'aria-hidden': 'true' }))),
     viewSlot,
     el('nav', { class: 'tabbar', 'aria-label': 'Bereiche' },
       ROUTES.map((r) => el('button', {

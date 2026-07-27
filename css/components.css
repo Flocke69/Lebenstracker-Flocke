@@ -41,6 +41,33 @@
   white-space: nowrap;
 }
 
+/* Das Profil hängt an der Kopfzeile statt in der Tab-Bar: fünf Reiter sind
+   voll, und man ändert sein Geburtsjahr nicht täglich. */
+.topbar__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: var(--space-1) var(--space-2);
+  background: none;
+  border-radius: var(--radius-sm);
+}
+
+.topbar__link:active {
+  background: var(--pitch-700);
+}
+
+.topbar__gear {
+  font-size: var(--text-md);
+  color: var(--ink-muted);
+  line-height: 1;
+}
+
+.topbar__link--active .topbar__gear,
+.topbar__link--active .topbar__sub {
+  color: var(--ink);
+}
+
 .view {
   padding: var(--space-4);
   padding-bottom: var(--space-8);
@@ -775,6 +802,25 @@
 .seg__opt--disabled {
   opacity: 0.35;
   cursor: not-allowed;
+}
+
+/* Ohne das drückt ein langes Wort die Leiste über den Bildrand hinaus:
+   Grid-Spalten haben eine Mindestbreite vom Inhalt, nicht von 1fr. */
+.seg__opt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 var(--space-1);
+}
+
+/* ─── Breite Inhalte ─────────────────────────────────────────────────────── */
+
+/* Tabellen scrollen in ihrem eigenen Kasten. Der Seitenkörper darf nie
+   waagerecht scrollen — das fühlt sich auf dem Handy wie ein Fehler an. */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ─── Hinweise ───────────────────────────────────────────────────────────── */

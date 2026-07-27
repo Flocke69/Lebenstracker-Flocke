@@ -336,6 +336,14 @@ export function normalizeProfile(patch) {
     assertNumber(p.activityFactors[type], `activityFactors.${type}`, 1, 3);
   }
 
+  // Tagestypen, an denen die Kalorienkorrektur ausgesetzt wird.
+  p.offsetExemptDayTypes = [...new Set(p.offsetExemptDayTypes ?? [])];
+  for (const type of p.offsetExemptDayTypes) {
+    if (!DAY_TYPES.includes(type)) {
+      throw new RangeError(`Unbekannter Tagestyp in offsetExemptDayTypes: "${type}"`);
+    }
+  }
+
   return p;
 }
 

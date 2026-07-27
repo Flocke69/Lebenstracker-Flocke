@@ -76,6 +76,10 @@ def main():
     print(f"  Verzeichnis: {ROOT}")
     print(f"  App:         http://127.0.0.1:{port}/")
     print(f"  Tests:       http://127.0.0.1:{port}/tests.html")
+    print()
+    print("  Zeigt der Browser trotz Änderung die alte Fassung, hilft ein")
+    print("  frisches Pfad-Präfix — es wird an alle Importe weitergereicht:")
+    print(f"      http://127.0.0.1:{port}/v/1/index.html   (Zahl hochzählen)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

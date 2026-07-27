@@ -30,6 +30,14 @@ export const DAY_TYPE_LABELS = Object.freeze({
   match: 'Spieltag',
 });
 
+/** Kurzformen — "Mannschaftstraining" sprengt auf 375 px jede Auswahlleiste. */
+export const DAY_TYPE_SHORT = Object.freeze({
+  rest: 'Ruhe',
+  gym: 'Gym',
+  team: 'Team',
+  match: 'Spiel',
+});
+
 /** Startwerte, im Profil editierbar. */
 export const DEFAULT_FACTORS = Object.freeze({
   rest: 1.35,
@@ -131,6 +139,7 @@ export function dayTargets({
   proteinPerKg = DEFAULT_PROTEIN_PER_KG,
   fatPerKg = DEFAULT_FAT_PER_KG,
   kcalOffset = 0,
+  offsetExemptDayTypes = [],
 }) {
   const bmr = bmrMifflin({ sex, weightKg, heightCm, age });
   const factor = activityFactor(dayType, factors);
@@ -138,7 +147,28 @@ export function dayTargets({
   num(fatPerKg, 'fatPerKg', 0.2, 5);
   num(kcalOffset, 'kcalOffset', -1500, 1500);
 
-  const kcal = bmr * factor + kcalOffset;
+  if (!Array.isArray(offsetExemptDayTypes)) {
+    throw new TypeError(
+      `offsetExemptDayTypes muss ein Array sein, war: ${offsetExemptDayTypes}`
+    );
+  }
+  for (const type of offsetExemptDayTypes) {
+    if (!DAY_TYPES.includes(type)) {
+      throw new RangeError(`Unbekannter Tagestyp in offsetExemptDayTypes: "${type}"`);
+    }
+  }
+
+  /* An ausgenommenen Tagen greift die Kalorienkorrektur nicht.
+   *
+   * Gedacht für den Spieltag: ausgerechnet an dem Tag, an dem 90 Minuten
+   * Leistung anstehen, mehrere hundert Kalorien zu kürzen, ist die eine
+   * Stelle, an der ein Defizit die Leistung wirklich kostet. Die Wochenbilanz
+   * verschiebt sich dadurch um genau einen Tagesbetrag — das ist der Preis,
+   * und er ist bewusst gewählt.
+   */
+  const offsetApplies = !offsetExemptDayTypes.includes(dayType);
+  const appliedOffset = offsetApplies ? kcalOffset : 0;
+  const kcal = bmr * factor + appliedOffset;
 
   // Fix, weil an ihnen nicht gespart wird:
   const proteinG = weightKg * proteinPerKg;
@@ -150,7 +180,10 @@ export function dayTargets({
   const carbsClamped = remainder < 0;
   const carbsG = carbsClamped ? 0 : remainder / KCAL_PER_G.carb;
 
-  return { dayType, bmr, factor, kcal, proteinG, carbsG, fatG, carbsClamped };
+  return {
+    dayType, bmr, factor, kcal, proteinG, carbsG, fatG, carbsClamped,
+    appliedOffset, offsetExempt: !offsetApplies,
+  };
 }
 
 /* ─── Wochenziele ────────────────────────────────────────────────────────── */
