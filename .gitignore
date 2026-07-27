@@ -1,0 +1,35 @@
+# ─────────────────────────────────────────────────────────────
+# Gesundheitsdaten dürfen NIE in dieses Repo.
+# Das Repo ist öffentlich (GitHub Pages braucht das auf dem Free-Plan).
+# Alle Tracker-Daten leben im localStorage des Handys und in den
+# Monats-Exportdateien auf Flockes Geräten.
+# ─────────────────────────────────────────────────────────────
+lebenstracker-*.json
+export*.json
+backup*.json
+/exports/
+/archive/
+*.private.json
+
+# SSH-Schlüssel, Tokens, Zugangsdaten — falls je etwas hier landet
+id_*
+*.pem
+*.key
+.env
+.env.*
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# iCloud Drive
+.icloud
+*.icloud
+
+# Editoren
+.vscode/
+.idea/
+*.swp
+*~
