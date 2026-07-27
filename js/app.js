@@ -95,9 +95,21 @@ function renderApp() {
 }
 
 function render() {
+  /* Jede Eingabe im Check-in speichert sofort und löst ein Neuzeichnen aus.
+     Ohne das hier würde die Seite dabei jedes Mal nach oben springen — nach
+     dem dritten Antippen benutzt das niemand mehr. */
+  const scrollY = window.scrollY;
+  const openReveals = [...document.querySelectorAll('.reveal[open]')].length;
+
   try {
     if (!isProfileComplete(store.getState()?.profile)) renderOnboarding();
-    else renderApp();
+    else {
+      renderApp();
+      if (openReveals > 0) {
+        document.querySelectorAll('.reveal').forEach((d) => { d.open = true; });
+      }
+      window.scrollTo(0, scrollY);
+    }
   } catch (err) {
     console.error('[app] Zeichnen fehlgeschlagen', err);
     root.className = 'app app--onboarding';
@@ -106,6 +118,39 @@ function render() {
         el('span', { class: 'notice__title', text: 'Etwas ist schiefgelaufen' }),
         err.message)));
   }
+}
+
+/* ─── Service Worker ─────────────────────────────────────────────────────── */
+
+const IS_LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+
+/**
+ * Offline-Cache einschalten — aber nicht beim lokalen Entwickeln.
+ *
+ * Der Service Worker liefert bewusst zuerst aus dem Cache. Auf dem
+ * Entwicklungsrechner heißt das: nach jeder Änderung sieht man die alte
+ * Version, bis der Cache von Hand geleert wird. Auf localhost wird er
+ * deshalb nicht registriert und ein eventuell vorhandener abgemeldet.
+ *
+ * Offline wird auf der echten Adresse geprüft, nicht hier.
+ */
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+
+  if (IS_LOCAL) {
+    navigator.serviceWorker.getRegistrations().then((regs) => {
+      regs.forEach((r) => r.unregister());
+      if (regs.length) {
+        caches.keys().then((keys) => keys.forEach((k) => caches.delete(k)));
+        console.info('[app] Service Worker lokal abgemeldet — kein Cache beim Entwickeln.');
+      }
+    });
+    return;
+  }
+
+  navigator.serviceWorker.register('./sw.js').catch((err) => {
+    console.warn('[app] Service Worker nicht registriert', err.message);
+  });
 }
 
 /* ─── Start ──────────────────────────────────────────────────────────────── */
@@ -132,11 +177,7 @@ function boot() {
     console.info(`[app] dauerhafter Speicher: ${supported ? (granted ? 'zugesagt' : 'abgelehnt') : 'nicht unterstützt'}`);
   });
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch((err) => {
-      console.warn('[app] Service Worker nicht registriert', err.message);
-    });
-  }
+  registerServiceWorker();
 }
 
 boot();

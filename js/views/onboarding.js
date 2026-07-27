@@ -13,7 +13,7 @@
 
 import { WEEKDAYS_SHORT, WEEKDAYS_LONG, todayKey } from '../lib/dates.js';
 import { suggestGymWeekdays, pickLegDay } from '../lib/planner.js';
-import { el, replace } from './dom.js';
+import { el, replace, decimalInput, parseDecimal } from './dom.js';
 
 const currentYear = new Date().getFullYear();
 
@@ -49,10 +49,20 @@ function segCheckboxes(name, options, selected, onChange) {
         el('span', { text: opt.label }))));
 }
 
-function numberField(id, label, hint, attrs) {
+/* Ganzzahlen (Geburtsjahr, Größe) dürfen type="number" bleiben — dort kommt
+   nie ein Komma vor. Alles mit Nachkommastelle geht über decimalInput, weil
+   ein Zahlenfeld das Komma der deutschen Tastatur verwirft. */
+function integerField(id, label, hint, attrs) {
   return el('div', { class: 'field' },
     el('label', { for: id, text: label }),
-    el('input', { id, type: 'number', inputMode: 'decimal', ...attrs }),
+    el('input', { id, type: 'number', inputMode: 'numeric', ...attrs }),
+    hint ? el('p', { class: 'field__hint', text: hint }) : null);
+}
+
+function decimalField(id, label, hint, attrs) {
+  return el('div', { class: 'field' },
+    el('label', { for: id, text: label }),
+    decimalInput({ id, ...attrs }),
     hint ? el('p', { class: 'field__hint', text: hint }) : null);
 }
 
@@ -137,10 +147,7 @@ export function render({ store, onDone }) {
     event.preventDefault();
     replace(errorSlot);
 
-    const read = (id) => {
-      const raw = document.getElementById(id).value.trim();
-      return raw === '' ? null : Number(raw.replace(',', '.'));
-    };
+    const read = (id) => parseDecimal(document.getElementById(id).value);
 
     try {
       store.setProfile({
@@ -178,14 +185,14 @@ export function render({ store, onDone }) {
         ], draft.sex, (v) => { draft.sex = v; })),
 
       el('div', { class: 'field__row' },
-        numberField('birthYear', 'Geburtsjahr', null, {
+        integerField('birthYear', 'Geburtsjahr', null, {
           min: 1920, max: currentYear - 10, step: 1, placeholder: '2001',
         }),
-        numberField('heightCm', 'Größe in cm', null, {
+        integerField('heightCm', 'Größe in cm', null, {
           min: 100, max: 250, step: 1, placeholder: '180',
         })),
 
-      numberField('startWeightKg', 'Aktuelles Gewicht in kg',
+      decimalField('startWeightKg', 'Aktuelles Gewicht in kg',
         'Nur der Startwert. Ab morgen trägst du täglich ein — gewertet wird ' +
         'der 7-Tage-Schnitt, nicht der Tageswert.',
         { min: 20, max: 400, step: 0.1, placeholder: '80,0' })),

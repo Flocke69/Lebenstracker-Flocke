@@ -299,6 +299,152 @@
   border-radius: var(--radius-sm);
 }
 
+/* ─── Bereitschaft — der Held des Heute-Screens ──────────────────────────── */
+
+/* Die Zahl beantwortet nicht "wie fühle ich mich", sondern "was mache ich
+   heute". Deshalb steht die Anweisung direkt darunter und die Begründung
+   darunter — nie die Zahl allein. */
+
+.hero {
+  background: var(--surface);
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+
+.hero__top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.hero__score {
+  font-family: var(--font-display);
+  font-size: var(--text-hero);
+  line-height: 0.85;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.hero__of {
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--ink-muted);
+  margin-left: 0.2em;
+  letter-spacing: 0;
+}
+
+.hero__headline {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  line-height: var(--leading-snug);
+  margin-top: var(--space-3);
+}
+
+.hero__detail {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  margin-top: var(--space-1);
+}
+
+.hero__adjust {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line-200);
+}
+
+/* Kein Ampelsystem: "volles Programm" ist kreideweiß, also farblos.
+   Das Flutlicht geht nur an, wenn eingeschränkt wird. */
+.hero--full .hero__score,
+.hero--full .hero__headline { color: var(--chalk-100); }
+
+.hero--reduced .hero__score,
+.hero--reduced .hero__headline { color: var(--sodium-500); }
+
+.hero--rest .hero__score,
+.hero--rest .hero__headline { color: var(--redcard-500); }
+
+.hero--none .hero__score { color: var(--line-300); }
+.hero--none .hero__headline { color: var(--chalk-100); }
+
+/* ─── Check-in ───────────────────────────────────────────────────────────── */
+
+.checkin__row {
+  margin-bottom: var(--space-4);
+}
+
+.checkin__row:last-child {
+  margin-bottom: 0;
+}
+
+.checkin__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.checkin__name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.checkin__poles {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  margin-top: var(--space-1);
+}
+
+/* Aufklappbereich, wenn der Check-in schon steht */
+.reveal {
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  margin-bottom: var(--space-4);
+}
+
+.reveal > summary {
+  padding: var(--space-4);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink-muted);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--tap-min);
+}
+
+.reveal > summary::-webkit-details-marker {
+  display: none;
+}
+
+.reveal > summary::after {
+  content: '+';
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--ink-muted);
+}
+
+.reveal[open] > summary::after {
+  content: '−';
+}
+
+.reveal__body {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
 /* ─── Beinvolumen-Ampel, ohne Ampel ──────────────────────────────────────── */
 
 /* Kein Farbsystem: "erlaubt" ist die Abwesenheit von Farbe. Das Flutlicht

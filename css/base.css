@@ -194,7 +194,10 @@ textarea {
   appearance: none;
 }
 
-input[type='number'] {
+/* Zahlenfelder — auch die als type="text" gebauten Dezimalfelder, die ein
+   Komma annehmen müssen (siehe decimalInput in js/views/dom.js). */
+input[type='number'],
+input.num {
   font-family: var(--font-display);
   font-size: var(--text-lg);
   font-variant-numeric: tabular-nums;

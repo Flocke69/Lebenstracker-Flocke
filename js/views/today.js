@@ -1,9 +1,13 @@
 /* Heute — der Screen, der täglich benutzt wird.
  *
- * Stand Phase 1: Wochenband, Tagestyp, die Beinvolumen-Regel und die
- * Tagesziele für Kalorien und Makros. Der Check-in mit dem Bereitschafts-Wert
- * kommt in Phase 2 und schiebt sich dann über die Ziele — er ist die
- * eigentliche Antwort auf "was ist heute richtig".
+ * Aufbau folgt der Frage, die morgens ansteht: "Was mache ich heute?"
+ *
+ *   1. Wochenband     — wo stehe ich in der Woche, wie weit ist das Spiel
+ *   2. Bereitschaft    — die Antwort, als Zahl mit Anweisung und Begründung
+ *   3. Check-in        — die Eingabe dafür (zugeklappt, wenn schon erledigt)
+ *   4. Beine heute     — die harte Regel rund um den Spieltag
+ *   5. Ziel heute      — Kalorien und Makros
+ *   6. Gewicht
  */
 
 import {
@@ -12,7 +16,12 @@ import {
 import { dayTypeFor, weightOn, getDay } from '../lib/state.js';
 import { dayTargets, DAY_TYPE_LABELS, ageOn, KCAL_PER_G } from '../lib/energy.js';
 import { legVolumeAllowance } from '../lib/planner.js';
-import { el, replace, int, dec, stat, card, dayWord } from './dom.js';
+import { readinessScore, trainingGuidance } from '../lib/readiness.js';
+import { checkinFields, checkinSummary } from './checkin.js';
+import {
+  el, replace, int, dec, stat, card, dayWord,
+  decimalInput, parseDecimal, toInputValue,
+} from './dom.js';
 
 const LEVEL_WORD = {
   heavy: 'Schwere Sätze frei',
@@ -20,17 +29,17 @@ const LEVEL_WORD = {
   none: 'Beine gesperrt',
 };
 
-/* Das Wochenband. Kreide-Haarlinien wie Spielfeldmarkierungen, der Spieltag
-   mit dem Mittelkreis-Bogen, das Mannschaftstraining mit Doppellinie. Es
-   kodiert etwas Wahres: die Woche ist um den Spieltag gebaut, nicht um den
-   Montag. */
+/* ─── Wochenband ─────────────────────────────────────────────────────────── */
+
+/* Kreide-Haarlinien wie Spielfeldmarkierungen, der Spieltag mit dem
+   Mittelkreis-Bogen. Es kodiert etwas Wahres: die Woche ist um den Spieltag
+   gebaut, nicht um den Montag. */
 function weekband(state, today) {
   const p = state.profile;
-  const keys = weekKeys(today);
 
   return el('div', null,
     el('div', { class: 'weekband' },
-      keys.map((key) => {
+      weekKeys(today).map((key) => {
         const weekday = weekdayOf(key);
         const day = getDay(state, key);
         const isToday = key === today;
@@ -48,7 +57,9 @@ function weekband(state, today) {
         },
           el('span', { class: 'weekband__label', text: weekdayShort(key) }),
           el('span', { class: 'weekband__num', text: String(parseKey(key).getDate()) }),
-          el('span', { class: `weekband__mark${markClass ? ` weekband__mark--${markClass}` : ''}` }));
+          el('span', {
+            class: `weekband__mark${markClass ? ` weekband__mark--${markClass}` : ''}`,
+          }));
       })),
     el('div', { class: 'weekband__legend' },
       el('span', { text: '⌒ Spiel' }),
@@ -57,29 +68,90 @@ function weekband(state, today) {
       el('span', { text: '● erledigt' })));
 }
 
-/* Die Beinvolumen-Regel. Kein Ampelsystem: "frei" ist kreideweiß, also die
-   Abwesenheit von Farbe. Das Flutlicht geht nur an, wenn eingeschränkt wird —
-   und jede Stufe trägt zusätzlich ein Wort. */
-function allowanceCard(state, today) {
-  const a = legVolumeAllowance(today, {
-    matchDayWeekday: state.profile.matchDayWeekday,
-    teamTrainingWeekdays: state.profile.teamTrainingWeekdays ?? [],
-  });
+/* ─── Bereitschaft ───────────────────────────────────────────────────────── */
 
-  return el('div', { class: `card allowance allowance--${a.level}` },
+function readinessHero(readiness, guidance) {
+  const hasScore = readiness.score !== null;
+  const level = hasScore ? readiness.level : 'none';
+
+  /* Die Chips sagen, was konkret anders läuft als geplant. An einem Ruhetag
+     ist eine Satzangabe sinnlos — dort steht, was stattdessen zu tun ist. */
+  const adjustments = [];
+  if (hasScore) {
+    if (readiness.level === 'rest') {
+      adjustments.push('Nur Prophylaxe und Mobilität');
+    } else if (guidance.setsDelta !== 0) {
+      const n = Math.abs(guidance.setsDelta);
+      adjustments.push(`${n} Satz${n === 1 ? '' : 'e'} weniger pro Übung`);
+    } else {
+      adjustments.push('Progression versuchen');
+    }
+    if (guidance.rpeCap !== null) {
+      adjustments.push(`RPE höchstens ${guidance.rpeCap}`);
+    }
+    if (!readiness.isComplete) {
+      const n = readiness.missing.length;
+      adjustments.push(`${n} Feld${n === 1 ? '' : 'er'} offen`);
+    }
+  }
+
+  return el('div', { class: `hero hero--${level}` },
+    el('div', { class: 'card__head' },
+      el('span', { class: 'eyebrow', text: 'Bereitschaft' })),
+    el('div', { class: 'hero__top' },
+      el('span', { class: 'hero__score' },
+        hasScore ? String(Math.round(readiness.score)) : '–',
+        hasScore ? el('span', { class: 'hero__of', text: 'von 100' }) : null)),
+    el('div', { class: 'hero__headline', text: guidance.headline }),
+    el('p', { class: 'hero__detail', text: guidance.detail }),
+    adjustments.length
+      ? el('div', { class: 'hero__adjust' },
+        adjustments.map((a) => el('span', { class: 'chip', text: a })))
+      : null);
+}
+
+function checkinSection(store, today, readiness) {
+  // Solange etwas fehlt, steht das Formular offen — es ist die wichtigste
+  // Handlung des Tages. Ist alles ausgefüllt, klappt es weg.
+  if (!readiness.isComplete) {
+    return card('Check-in',
+      el('span', { class: 'eyebrow', text: 'jeden Morgen' }),
+      checkinFields(store, today));
+  }
+
+  return el('details', { class: 'reveal' },
+    el('summary', null,
+      el('span', { text: `Check-in: ${checkinSummary(store, today)}` })),
+    el('div', { class: 'reveal__body' }, checkinFields(store, today)));
+}
+
+/* ─── Beine ──────────────────────────────────────────────────────────────── */
+
+function allowanceCard(state, today, allowance, guidance) {
+  const level = guidance.legLevel;
+
+  return el('div', { class: `card allowance allowance--${level}` },
     el('div', { class: 'card__head' },
       el('span', { class: 'eyebrow', text: 'Beine heute' }),
       el('span', { class: 'chip', text: DAY_TYPE_LABELS[dayTypeFor(state, today)] })),
-    el('div', { class: 'allowance__level', text: LEVEL_WORD[a.level] }),
-    el('p', { class: 'allowance__reason', text: a.reason }),
+    el('div', { class: 'allowance__level', text: LEVEL_WORD[level] }),
+    el('p', { class: 'allowance__reason', text: guidance.legReason }),
+    // Wenn die Bereitschaft die Stufe gesenkt hat, soll auch die
+    // Spielrhythmus-Begründung sichtbar bleiben — sonst wirkt die Sperre
+    // willkürlich.
+    guidance.limitedBy === 'Bereitschaft' && allowance.level !== level
+      ? el('p', { class: 'allowance__reason', text: `Rhythmus erlaubt heute: ${LEVEL_WORD[allowance.level].toLowerCase()}.` })
+      : null,
     el('div', { class: 'allowance__meta' },
       el('span', null,
-        el('b', { text: String(a.daysUntilMatch) }),
-        ` ${dayWord(a.daysUntilMatch)} bis zum Spiel`),
+        el('b', { text: String(allowance.daysUntilMatch) }),
+        ` ${dayWord(allowance.daysUntilMatch)} bis zum Spiel`),
       el('span', null,
-        el('b', { text: String(a.daysSinceMatch) }),
-        ` ${dayWord(a.daysSinceMatch)} danach`)));
+        el('b', { text: String(allowance.daysSinceMatch) }),
+        ` ${dayWord(allowance.daysSinceMatch)} danach`)));
 }
+
+/* ─── Ernährung ──────────────────────────────────────────────────────────── */
 
 function macroRow(name, grams, kcalPerG, totalKcal) {
   const share = totalKcal > 0 ? (grams * kcalPerG) / totalKcal : 0;
@@ -135,26 +207,26 @@ function targetsCard(state, today) {
       'Periodisierung.'));
 }
 
+/* ─── Gewicht ────────────────────────────────────────────────────────────── */
+
 function weightCard(state, today, store) {
   const day = getDay(state, today);
   const slot = el('div');
-  const input = el('input', {
+  const input = decimalInput({
     id: 'weightToday',
-    type: 'number',
-    inputMode: 'decimal',
-    step: 0.1,
-    min: 20,
-    max: 400,
     placeholder: dec(weightOn(state, today), 1),
-    value: day.weightKg === null ? '' : String(day.weightKg),
+    value: toInputValue(day.weightKg),
   });
 
   function save() {
     replace(slot);
-    const raw = input.value.trim().replace(',', '.');
-    if (raw === '') return;
+    const num = parseDecimal(input.value);
+    if (num === null) {
+      replace(slot, el('p', { class: 'field__hint', text: 'Bitte eine Zahl eintragen, z. B. 80,4.' }));
+      return;
+    }
     try {
-      store.setDay(today, { weightKg: Number(raw) });
+      store.setDay(today, { weightKg: num });
     } catch (err) {
       replace(slot, el('p', { class: 'field__hint', text: err.message }));
     }
@@ -167,7 +239,7 @@ function weightCard(state, today, store) {
         el('label', { for: 'weightToday', text: 'Kilogramm' }),
         input),
       el('div', null,
-        el('label', { text: ' ' }),
+        el('label', { text: ' ' }),
         el('button', {
           type: 'button', class: 'btn btn--block', text: 'Speichern', onclick: save,
         }))),
@@ -177,16 +249,26 @@ function weightCard(state, today, store) {
       'ein Kilo und mehr — bewertet wird später nur der 7-Tage-Schnitt.'));
 }
 
+/* ─── Zusammenbau ────────────────────────────────────────────────────────── */
+
 export function render({ store }) {
   const state = store.getState();
   const today = todayKey();
 
+  const allowance = legVolumeAllowance(today, {
+    matchDayWeekday: state.profile.matchDayWeekday,
+    teamTrainingWeekdays: state.profile.teamTrainingWeekdays ?? [],
+  });
+  const readiness = readinessScore(getDay(state, today).checkin);
+  const guidance = trainingGuidance(readiness, allowance);
+
   return el('div', { class: 'view' },
     weekband(state, today),
     el('h1', { text: formatDayLong(today) }),
-    el('p', { class: 'field__hint', text: 'Phase 1: Ziele und Beinregel stehen. Der Check-in mit Bereitschafts-Wert kommt als Nächstes.' }),
     el('div', { style: 'height: var(--space-4)' }),
-    allowanceCard(state, today),
+    readinessHero(readiness, guidance),
+    checkinSection(store, today, readiness),
+    allowanceCard(state, today, allowance, guidance),
     targetsCard(state, today),
     weightCard(state, today, store));
 }

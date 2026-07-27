@@ -56,6 +56,46 @@ export function replace(container, ...children) {
   return container;
 }
 
+/* ─── Zahleneingabe ──────────────────────────────────────────────────────── */
+
+/**
+ * Eingabefeld für Dezimalzahlen — bewusst NICHT `type="number"`.
+ *
+ * Ein Zahlenfeld weist nach HTML-Spezifikation alles ab, was keine gültige
+ * Fließkommazahl mit PUNKT ist. Auf einer deutschen Tastatur liegt aber ein
+ * Komma auf der Dezimaltaste: aus "7,5" wird dann ein leerer Wert, und die
+ * Eingabe verschwindet stillschweigend.
+ *
+ * `type="text"` mit `inputmode="decimal"` zeigt dieselbe Zifferntastatur,
+ * nimmt aber beides an. Umgewandelt wird in parseDecimal().
+ */
+export function decimalInput(props) {
+  return el('input', {
+    type: 'text',
+    inputMode: 'decimal',
+    autocomplete: 'off',
+    autocorrect: 'off',
+    spellcheck: false,
+    ...props,
+    class: `num${props?.class ? ` ${props.class}` : ''}`,
+  });
+}
+
+/** "7,5" und "7.5" → 7.5. Leer oder unlesbar → null. */
+export function parseDecimal(raw) {
+  const s = String(raw ?? '').trim().replace(',', '.');
+  if (s === '') return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Zahl fürs Eingabefeld: Punkt zu Komma. */
+export function toInputValue(value, digits = null) {
+  if (value === null || value === undefined) return '';
+  const s = digits === null ? String(value) : value.toFixed(digits);
+  return s.replace('.', ',');
+}
+
 /* ─── Zahlen fürs Auge ───────────────────────────────────────────────────── */
 
 /** Ganze Zahl mit deutschem Tausenderpunkt. */
