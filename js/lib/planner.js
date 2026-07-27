@@ -192,6 +192,34 @@ export function heavyLegWeekdays(config) {
   return out;
 }
 
+/* ─── Sperre einzelner Übungen ───────────────────────────────────────────── */
+
+/**
+ * Ist diese Übung heute gesperrt? Gibt die Begründung zurück, sonst null.
+ *
+ * Bewusst ohne Kenntnis des Übungskatalogs — die Regel hängt nur an zwei
+ * Eigenschaften. Dadurch ist sie hier testbar, statt in einer Ansicht zu
+ * verschwinden.
+ *
+ * Prophylaxe bleibt erlaubt, solange überhaupt etwas geht: Nordic-Ersatz,
+ * Copenhagen und Waden kosten kaum Erholung und sind genau der Teil, der die
+ * Saison schützt. Schwere Beinarbeit fällt schon bei Stufe "light" weg.
+ */
+export function exerciseBlockReason({ loadsLegs, prophylaxis = false }, legLevel) {
+  if (!LEG_LEVELS.includes(legLevel)) {
+    throw new RangeError(`Unbekannte Beinstufe "${legLevel}".`);
+  }
+  if (!loadsLegs) return null;
+
+  if (legLevel === 'none') {
+    return 'Heute gesperrt — Spieltag oder der Tag davor.';
+  }
+  if (legLevel === 'light' && !prophylaxis) {
+    return 'Heute nur Prophylaxe. Schwere Beinarbeit fällt aus.';
+  }
+  return null;
+}
+
 /* ─── Wahl des Bein-Tags ─────────────────────────────────────────────────── */
 
 /*

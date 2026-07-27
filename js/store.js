@@ -9,7 +9,7 @@
  */
 
 import { monthKey, todayKey } from './lib/dates.js';
-import { migrate, withDay, withProfile } from './lib/state.js';
+import { migrate, withDay, withProfile, withSet, withoutSet } from './lib/state.js';
 
 export const STORAGE_KEY = 'lebenstracker.v1';
 
@@ -110,6 +110,10 @@ export function createStore({ storage, today = todayKey } = {}) {
     update,
     setProfile: (patch) => update((s) => withProfile(s, patch)),
     setDay: (key, patch) => update((s) => withDay(s, key, patch)),
+    setSet: (key, planId, exId, index, patch) =>
+      update((s) => withSet(s, key, planId, exId, index, patch)),
+    clearSet: (key, planId, exId, index) =>
+      update((s) => withoutSet(s, key, planId, exId, index)),
 
     /** Nur für Tests und den Zurücksetzen-Knopf im Profil. */
     clear() {

@@ -10,8 +10,11 @@ import { isProfileComplete } from './lib/state.js';
 import { formatMonth, monthKey, todayKey } from './lib/dates.js';
 import { el, replace } from './views/dom.js';
 import * as todayView from './views/today.js';
+import * as trainingView from './views/training.js';
 import * as onboardingView from './views/onboarding.js';
 import * as placeholderView from './views/placeholder.js';
+
+const VIEWS = { heute: todayView, training: trainingView };
 
 const ROUTES = [
   { id: 'heute', label: 'Heute', glyph: '◎' },
@@ -72,8 +75,9 @@ function renderApp() {
   root.className = 'app';
 
   const viewSlot = el('main', { id: 'view' });
-  const body = route === 'heute'
-    ? todayView.render({ store, navigate })
+  const view = VIEWS[route];
+  const body = view
+    ? view.render({ store, navigate })
     : placeholderView.render({ store, navigate, route });
 
   replace(viewSlot, ...storageWarnings(), body);

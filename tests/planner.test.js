@@ -7,6 +7,7 @@ import {
   heavyLegWeekdays,
   pickLegDay,
   suggestGymWeekdays,
+  exerciseBlockReason,
 } from '../js/lib/planner.js';
 
 /* Flockes Konfiguration (JS-Wochentage: 0 = Sonntag … 6 = Samstag)
@@ -178,6 +179,48 @@ suite('planner — Vorschlag für die Gym-Tage', () => {
     throws(() => suggestGymWeekdays({ ...FLOCKE, count: 0 }));
     throws(() => suggestGymWeekdays({ ...FLOCKE, count: 7 }),
            'mehr Gym-Tage als freie Tage');
+  });
+});
+
+suite('planner — Sperre einzelner Übungen', () => {
+  const heavyLeg = { loadsLegs: true, prophylaxis: false };
+  const prophyLeg = { loadsLegs: true, prophylaxis: true };
+  const upper = { loadsLegs: false };
+
+  test('Oberkörperübungen sind nie gesperrt — auch nicht am Spieltag', () => {
+    for (const level of LEG_LEVELS) {
+      eq(exerciseBlockReason(upper, level), null, `Stufe ${level}`);
+    }
+  });
+
+  test('bei Stufe none ist alles für die Beine gesperrt, auch Prophylaxe', () => {
+    isTrue(exerciseBlockReason(heavyLeg, 'none') !== null);
+    isTrue(exerciseBlockReason(prophyLeg, 'none') !== null,
+           'am Spieltag auch keine Copenhagen Planks');
+  });
+
+  test('bei Stufe light bleibt die Prophylaxe erlaubt', () => {
+    // Das ist der Kern: der Verletzungsschutz darf nicht am Zeitplan
+    // scheitern. Er kostet praktisch keine Erholung.
+    eq(exerciseBlockReason(prophyLeg, 'light'), null);
+    isTrue(exerciseBlockReason(heavyLeg, 'light') !== null,
+           'schwere Beinarbeit faellt aber weg');
+  });
+
+  test('bei Stufe heavy ist nichts gesperrt', () => {
+    eq(exerciseBlockReason(heavyLeg, 'heavy'), null);
+    eq(exerciseBlockReason(prophyLeg, 'heavy'), null);
+  });
+
+  test('jede Sperre wird begründet, nie stumm', () => {
+    for (const level of ['none', 'light']) {
+      const reason = exerciseBlockReason(heavyLeg, level);
+      isTrue(typeof reason === 'string' && reason.length > 15, `Stufe ${level}: "${reason}"`);
+    }
+  });
+
+  test('unbekannte Stufe wirft', () => {
+    throws(() => exerciseBlockReason(heavyLeg, 'vielleicht'));
   });
 });
 

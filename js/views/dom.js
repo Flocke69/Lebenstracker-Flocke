@@ -113,6 +113,12 @@ export function dec(value, digits = 1) {
   });
 }
 
+/** Gewicht ohne überflüssige Nachkommastelle: 20 statt 20,0 — aber 22,5. */
+export function kg(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
+  return Number.isInteger(value) ? String(value) : dec(value, 1);
+}
+
 /** 'Tag' oder 'Tage' — je nach Anzahl. */
 export function dayWord(n) {
   return n === 1 ? 'Tag' : 'Tage';

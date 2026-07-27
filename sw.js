@@ -15,9 +15,10 @@
  * Verlauf:
  *   v1  Phase 1 — Grundgerüst, Onboarding, Tagesziele
  *   v2  Phase 2 — Check-in, Bereitschaft, Dezimaleingabe mit Komma
+ *   v3  Phase 4 — Trainingsplan, Übungskatalog, Satz-Logger
  */
 
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -34,10 +35,14 @@ const PRECACHE = [
   './js/lib/planner.js',
   './js/lib/readiness.js',
   './js/lib/state.js',
+  './js/lib/volume.js',
+  './data/exercises.js',
+  './data/plan-default.js',
   './js/views/checkin.js',
   './js/views/dom.js',
   './js/views/onboarding.js',
   './js/views/today.js',
+  './js/views/training.js',
   './js/views/placeholder.js',
   './fonts/barlow-condensed-600-latin.woff2',
   './fonts/inter-var-latin.woff2',
