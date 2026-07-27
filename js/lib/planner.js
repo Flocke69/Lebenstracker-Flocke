@@ -247,7 +247,10 @@ export function pickLegDay(config) {
     dayName: best.dayName,
     sharesTeamTrainingDay: best.isTeamTrainingDay,
     candidates,
+    /** Vollständiger Satz, wenn er allein steht (Log, Copy-Block). */
     reason: `Bein-Einheit am ${best.dayName}: ${best.reason}`,
+    /** Nur die Begründung — für Anzeigen, die den Tag schon im Titel nennen. */
+    detail: best.reason,
   };
 }
 
