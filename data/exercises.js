@@ -41,13 +41,31 @@ export const EXERCISES = Object.freeze({
     loadsLegs: false,
     note: 'Sitzend mit Lehne — stehend kostet Rumpfkraft, die du beim Fußball brauchst.',
   },
+  bench_press_db: {
+    name: 'Bankdrücken',
+    variant: 'Kurzhantel, flach',
+    primary: 'chest',
+    secondary: ['shoulders', 'triceps'],
+    loadsLegs: false,
+    note: 'Kurzhanteln statt Langhantel: größerer Bewegungsweg, und jede Seite muss '
+        + 'ihre eigene Arbeit machen. Ohne Partner außerdem sicherer.',
+  },
   incline_press_db: {
     name: 'Schrägbankdrücken',
     variant: 'Kurzhantel, 30 Grad',
     primary: 'chest',
     secondary: ['shoulders', 'triceps'],
     loadsLegs: false,
-    note: 'Flach wäre mehr Brust, schräg trifft die vordere Schulter mit — hier gewollt.',
+    note: 'Trifft den oberen Brustanteil, den flaches Drücken vernachlässigt.',
+  },
+  chest_fly_cable: {
+    name: 'Brustfliegende',
+    variant: 'Kabel oder Kurzhantel',
+    primary: 'chest',
+    secondary: [],
+    loadsLegs: false,
+    note: 'Der Reiz kommt aus der Dehnung, nicht aus dem Gewicht. Leicht beginnen, '
+        + 'Ellenbogen leicht gebeugt lassen.',
   },
   lateral_raise: {
     name: 'Seitheben',

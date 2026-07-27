@@ -3,14 +3,25 @@
  * Randbedingungen, aus denen er entstanden ist:
  *   Fußball    Mannschaftstraining Mittwoch, Spiel Sonntag
  *   Gym        Montag, Dienstag, Donnerstag — 60 bis 75 Minuten
- *   Ziel       Recomp mit klarem Schwerpunkt auf Schultern und Armen
+ *   Ziel       Recomp, Oberkörper GLEICHMÄSSIG verteilt
  *   Beine      1× schwer, maximal weit vom Spiel, plus Prophylaxe
  *   Gegeben    keine Klimmzüge möglich, kein Gerät für Nordic Curls
+ *
+ * KEIN SCHWERPUNKT. Brust, Rücken, Schultern, Bizeps und Trizeps bekommen
+ * jeweils 11 bis 14 Sätze pro Woche — der Abstand zwischen der stärksten und
+ * der schwächsten Gruppe liegt unter dem Faktor 1,3. Ein Test in
+ * tests/volume.test.js hält das fest, damit spätere Planänderungen die
+ * Balance nicht unbemerkt kippen.
+ *
+ * Dass der Rücken oben liegt, ist kein Schwerpunkt, sondern Statik: er zieht
+ * die Schulter gegen alles Drücken zurück. Und dass die Schulter hoch liegt,
+ * lässt sich nicht vermeiden — sie arbeitet bei jedem Druck mit und bekommt
+ * zusätzlich die Face Pulls ab.
  *
  * Warum die Einheiten so liegen:
  *
  * Montag und Dienstag hängen zusammen, deshalb müssen sie maximal
- * verschieden sein — Drücken und Ziehen. Zwei schulterlastige Tage
+ * verschieden sein — Drücken und Ziehen. Zwei gleichartige Tage
  * hintereinander wären die schlechteste aller Anordnungen.
  *
  * Der Bein-Slot liegt auf Donnerstag: 3 Tage vor dem Spiel, 4 Tage danach,
@@ -60,30 +71,25 @@ export const SESSIONS = Object.freeze([
     id: 'a-push',
     weekday: 1,
     name: 'Drücken',
-    focus: 'Schulter-Schwerpunkt',
+    focus: 'Brust, Schulter, Trizeps',
     intro:
-      'Der Tag nach dem Spiel. Die Beine sind müde, die Schultern nicht — '
+      'Der Tag nach dem Spiel. Die Beine sind müde, der Oberkörper nicht — '
       + 'deshalb liegt hier das schwere Drücken.',
     blocks: [
       {
         name: 'Hauptteil',
         exercises: [
-          { id: 'ohp_db', sets: 4, repsMin: 6, repsMax: 10, rpe: 8 },
+          { id: 'bench_press_db', sets: 4, repsMin: 6, repsMax: 10, rpe: 8 },
           { id: 'incline_press_db', sets: 3, repsMin: 8, repsMax: 12, rpe: 8 },
-          { id: 'lateral_raise', sets: 4, repsMin: 12, repsMax: 20, rpe: 9 },
+          { id: 'chest_fly_cable', sets: 3, repsMin: 12, repsMax: 15, rpe: 9 },
         ],
       },
       {
-        name: 'Arme',
+        name: 'Schulter und Arm',
         exercises: [
+          { id: 'ohp_db', sets: 3, repsMin: 6, repsMax: 10, rpe: 8 },
+          { id: 'lateral_raise', sets: 3, repsMin: 12, repsMax: 20, rpe: 9 },
           { id: 'triceps_overhead', sets: 3, repsMin: 10, repsMax: 15, rpe: 9 },
-          { id: 'triceps_pushdown', sets: 3, repsMin: 12, repsMax: 15, rpe: 9 },
-        ],
-      },
-      {
-        name: 'Rumpf',
-        exercises: [
-          { id: 'pallof_press', sets: 3, repsMin: 10, repsMax: 12, rpe: 7 },
         ],
       },
     ],
@@ -127,7 +133,7 @@ export const SESSIONS = Object.freeze([
   {
     id: 'c-legs-shoulders',
     weekday: 4,
-    name: 'Beine und Schultern',
+    name: 'Beine und Rumpf',
     focus: 'der einzige Beintag',
     intro:
       'Drei Tage vor dem Spiel — der einzige Tag der Woche, an dem schwere '
@@ -162,9 +168,11 @@ export const SESSIONS = Object.freeze([
         ],
       },
       {
-        name: 'Schultern',
+        // Kurze Sätze mit wenig Pause — sie verlängern die Einheit kaum.
+        name: 'Zum Abschluss',
         exercises: [
-          { id: 'lateral_raise', sets: 3, repsMin: 15, repsMax: 20, rpe: 9 },
+          { id: 'triceps_pushdown', sets: 3, repsMin: 12, repsMax: 15, rpe: 9 },
+          { id: 'pallof_press', sets: 3, repsMin: 10, repsMax: 12, rpe: 7 },
         ],
       },
     ],

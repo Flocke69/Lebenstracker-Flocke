@@ -93,6 +93,17 @@ suite('Plan — Stimmigkeit gegen den Katalog', () => {
     }
   });
 
+  test('DAS BEINVOLUMEN BLEIBT UNVERÄNDERT', () => {
+    // Beim Umbau auf Gleichverteilung durfte sich am Beintag nichts ändern:
+    // gleiche Übungen, gleiche Sätze, gleiche Frequenz.
+    const donnerstag = sessionExercises(sessionById('c-legs-shoulders'));
+    const beine = donnerstag.filter((e) => EXERCISES[e.id].loadsLegs);
+    deepEq(beine.map((e) => e.id),
+      ['rdl', 'split_squat_bulgarian', 'leg_curl_eccentric', 'copenhagen_plank', 'calf_raise']);
+    deepEq(beine.map((e) => e.sets), [3, 3, 3, 3, 3]);
+    eq(beine.reduce((n, e) => n + e.sets, 0), 15, '15 Beinsätze, einmal pro Woche');
+  });
+
   test('der Donnerstag trägt einen eigenen Prophylaxeblock', () => {
     const donnerstag = sessionById('c-legs-shoulders');
     const block = donnerstag.blocks.find((b) => b.prophylaxis);
@@ -196,23 +207,40 @@ suite('volume — der Plan in Zahlen', () => {
   const planned = plannedSetsPerMuscle(SESSIONS);
 
   test('das geplante Wochenvolumen ist berechenbar', () => {
-    close(planned.shoulders, 15.5, 0.001, 'Schulterdrücken 4 + Schrägbank 1,5 + Seitheben 4+3 + Face Pulls 3');
     close(planned.hamstrings, 6, 0.001, 'RDL 3 + Beincurl 3');
     close(planned.quads, 3, 0.001, 'nur Bulgarische Kniebeuge');
+    close(planned.calves, 3, 0.001);
+    close(planned.adductors, 3, 0.001, 'Copenhagen Plank');
   });
 
-  test('SCHWERPUNKT: fast zwei Drittel des Oberkörpervolumens gehen auf Schulter und Arm', () => {
-    // Das war Flockes ausdrückliche Vorgabe. Der Test hält sie fest, damit
-    // spätere Planänderungen den Schwerpunkt nicht unbemerkt verschieben.
-    const share = shareOf(planned, ['shoulders', 'biceps', 'triceps'],
-                          ['shoulders', 'biceps', 'triceps', 'chest', 'back', 'traps']);
-    isTrue(share >= 0.6, `Anteil am Oberkörper war ${(share * 100).toFixed(1)} %`);
-    isTrue(share <= 0.75, `nicht mehr als 75 %, sonst fehlt der Rücken: ${(share * 100).toFixed(1)} %`);
+  test('KEIN SCHWERPUNKT: die großen Oberkörpergruppen liegen dicht beieinander', () => {
+    // Flockes ausdrückliche Vorgabe nach dem ersten Entwurf. Der Test hält
+    // die Balance fest, damit spätere Planänderungen sie nicht unbemerkt
+    // kippen — in die eine oder die andere Richtung.
+    const gruppen = ['chest', 'back', 'shoulders', 'biceps', 'triceps'];
+    const werte = gruppen.map((g) => planned[g]);
+    const groesste = Math.max(...werte);
+    const kleinste = Math.min(...werte);
+
+    isTrue(kleinste >= 10,
+           `jede Gruppe braucht mindestens 10 Sätze, kleinste war ${kleinste}`);
+    isTrue(groesste / kleinste <= 1.35,
+           `Verhältnis ${groesste} zu ${kleinste} = ${(groesste / kleinste).toFixed(2)} — `
+           + `das wäre wieder ein Schwerpunkt`);
   });
 
-  test('der Rücken bekommt genug, damit die Schulter belastbar bleibt', () => {
+  test('keine einzelne Oberkörpergruppe nimmt mehr als ein Viertel ein', () => {
+    const bezug = ['chest', 'back', 'shoulders', 'biceps', 'triceps', 'traps'];
+    for (const g of ['chest', 'back', 'shoulders', 'biceps', 'triceps']) {
+      const anteil = shareOf(planned, [g], bezug);
+      isTrue(anteil <= 0.25, `${g}: ${(anteil * 100).toFixed(1)} %`);
+    }
+  });
+
+  test('der Rücken bekommt mindestens so viel wie die Brust', () => {
     // Viel Drücken ohne Ziehen führt zuverlässig zu Schulterproblemen.
-    isTrue(planned.back >= planned.chest * 2,
+    // Gleichverteilung heißt nicht, dass die Statik egal wird.
+    isTrue(planned.back >= planned.chest,
            `Rücken ${planned.back} gegen Brust ${planned.chest}`);
   });
 

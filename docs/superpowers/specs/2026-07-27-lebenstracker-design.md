@@ -158,7 +158,8 @@ Mifflin-St Jeor:
 `TDEE = BMR × Faktor(Tagestyp)`, Startfaktoren Ruhetag 1,35 · Gym 1,50 · Mannschaftstraining 1,65 ·
 Spieltag 1,75, im Profil editierbar.
 
-Recomp-Verteilung: Kalorien = TDEE + `kcalOffset`. Protein 2,0 g/kg, Fett 0,8 g/kg, Rest
+Recomp-Verteilung: Kalorien = TDEE + `kcalOffset` (Flocke fährt −500 kcal, am Spieltag über
+`offsetExemptDayTypes` ausgesetzt). Protein 2,2 g/kg, Fett 0,8 g/kg, Rest
 Kohlenhydrate. **Kohlenhydrate werden um den Fußball periodisiert** — an Spiel- und Trainingstagen
 höher, an Ruhetagen niedriger, bei konstanter Wochensumme. Das ist der Mechanismus, der Recomp
 neben Fußball überhaupt tragfähig macht: die Energie liegt dort, wo die Leistung gebraucht wird.
@@ -328,28 +329,39 @@ heimlich weggelassen.
 
 ## 7. Trainingsplan
 
-Reihenfolge wie von Flocke gewünscht: erst App, dann Plan im Gespräch. Die Struktur, die die App
-tragen muss, steht fest — 3 Gym-Einheiten pro Woche:
+Drei Gym-Einheiten: Montag, Dienstag, Donnerstag. Montag und Dienstag hängen zusammen und müssen
+deshalb maximal verschieden sein — Drücken und Ziehen. Der Bein-Slot liegt auf Donnerstag: 3 Tage
+vor dem Spiel, 4 danach, und einen Tag **nach** dem Mannschaftstraining statt davor.
 
-- **A — Drücken, Schwerpunkt Schulter:** Schulterdrücken schwer · Schrägbank · Seitheben (hohes
-  Volumen) · Trizeps zweifach
-- **B — Ziehen + Bein-Slot:** Klimmzug/Rudern · Rear Delts · Bizeps · schwere Einbein-Arbeit oder
-  Kniebeuge (3–4 Sätze, niedrige Wiederholungen) · Prophylaxeblock
-- **C — Schulter/Arm-Spezial:** Seitheben-Volumen · Face Pulls · Trizeps · Bizeps · Traps ·
-  Rotatorenarbeit
+| Tag | Einheit | Übungen |
+|---|---|---|
+| **Mo** | Drücken | Bankdrücken KH · Schrägbank KH · Brustfliegende · Schulterdrücken · Seitheben · Trizeps über Kopf |
+| **Di** | Ziehen | Latzug · Negativ-Klimmzüge · Rudern KH · Face Pulls · Bizeps-Curls · Hammer-Curls |
+| **Do** | Beine und Rumpf | RDL · Bulgarische Kniebeuge · **Prophylaxe** · Trizeps-Drücken · Pallof-Press |
 
-Rund 60 % des Volumens gehen bewusst auf Schultern und Arme. Rücken und Brust bleiben als Basis
-drin, weil viel Drückvolumen ohne Zugarbeit zuverlässig zu Schulterproblemen führt.
+**Kein Schwerpunkt auf einzelnen Muskelgruppen** (Flockes Vorgabe nach dem ersten Entwurf). Die
+großen Oberkörpergruppen liegen dicht beieinander: Rücken 14 · Schultern 12,5 · Brust 11,5 ·
+Bizeps 11,5 · Trizeps 11 Sätze pro Woche — Faktor 1,27 zwischen größter und kleinster. 60 Sätze
+gesamt. Ein Test in `tests/volume.test.js` hält die Balance fest, damit spätere Planänderungen sie
+nicht unbemerkt kippen.
 
-Prophylaxeblock (~10 Min in Einheit B, optional an einem zweiten Tag): Nordic-Curl-Progression ·
-Copenhagen Plank · Waden · Hüftstabilität.
+Dass der Rücken oben liegt, ist kein Schwerpunkt, sondern Statik: er zieht die Schulter gegen alles
+Drücken zurück. Und die Schulter lässt sich nicht tiefer bringen — sie arbeitet bei jedem Druck mit
+und bekommt zusätzlich die Face Pulls ab.
+
+**Beinvolumen: 15 Sätze, einmal pro Woche, ausschließlich Donnerstag.** RDL 3 · Bulgarische
+Kniebeuge 3 · exzentrische Beincurls 3 · Copenhagen Plank 3 · Waden 3. Der Prophylaxeblock kostet
+zehn Minuten und richtet sich gegen die zwei häufigsten Ausfallursachen im Amateurfußball.
+
+Angepasst an Flockes Gegebenheiten: keine Klimmzüge möglich → Latzug plus Negativ-Klimmzüge mit dem
+ausdrücklichen Ziel der ersten drei sauberen. Kein Gerät und kein Partner für Nordic Curls →
+Rumänisches Kreuzheben schwer plus Beincurls mit betont langsamer Absenkphase; beides belastet die
+Hamstrings in der gedehnten Position, worauf es beim Verletzungsschutz ankommt.
 
 Progression: Doppelprogression (erst Wiederholungen im Zielbereich, dann Gewicht), RPE 7–9, Woche 4
-als Deload. Platzierung immer über `lib/planner.js` relativ zum eingestellten Spieltag.
-
-Offene Eingaben für Phase 8: Alter, Größe, aktuelles Gewicht, Spieltag- und Trainingstag-Wochentag,
-verfügbare Gym-Tage, aktuelle Arbeitsgewichte bei Schulterdrücken, Bankdrücken, Rudern, Klimmzug und
-Kniebeuge.
+als Deload. Der Plan enthält **keine Gewichte** — die kommen aus dem Logger, der ab dem zweiten Mal
+„letztes Mal" an jeder Übung anzeigt. Platzierung immer über `lib/planner.js` relativ zum
+eingestellten Spieltag.
 
 ## 8. Testen ohne npm
 
