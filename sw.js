@@ -18,9 +18,10 @@
  *   v3  Phase 4 — Trainingsplan, Übungskatalog, Satz-Logger
  *   v4  Profil-Screen, Kaloriendefizit mit Ausnahmetagen
  *   v5  Phase 3+5 — Ernährung, Trends, Charts
+ *   v6  Phase 6+7 — Reviews, Monatsarchiv, Export und Import
  */
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -50,6 +51,10 @@ const PRECACHE = [
   './js/views/nutrition.js',
   './js/views/trends.js',
   './js/views/chart.js',
+  './js/lib/review.js',
+  './js/lib/archive.js',
+  './js/views/review.js',
+  './js/views/archive.js',
   './js/views/placeholder.js',
   './fonts/barlow-condensed-600-latin.woff2',
   './fonts/inter-var-latin.woff2',

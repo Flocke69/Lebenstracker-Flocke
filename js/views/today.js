@@ -17,6 +17,7 @@ import { dayTypeFor, weightOn, getDay } from '../lib/state.js';
 import { dayTargets, DAY_TYPE_LABELS, ageOn, KCAL_PER_G } from '../lib/energy.js';
 import { legVolumeAllowance } from '../lib/planner.js';
 import { readinessScore, trainingGuidance } from '../lib/readiness.js';
+import { exportReminder } from '../lib/archive.js';
 import { checkinFields, checkinSummary } from './checkin.js';
 import {
   el, replace, int, dec, stat, card, dayWord,
@@ -251,7 +252,24 @@ function weightCard(state, today, store) {
 
 /* ─── Zusammenbau ────────────────────────────────────────────────────────── */
 
-export function render({ store }) {
+/* Die Erinnerung steht auf dem Screen, den Flocke täglich sieht — nicht im
+   Archiv, wo sie erst auffällt, wenn man ohnehin schon daran gedacht hat. */
+function backupReminder(state, today, navigate) {
+  const reminder = exportReminder(state, today);
+  if (!reminder.due) return null;
+
+  return el('div', { class: 'notice notice--warn' },
+    el('span', { class: 'notice__title', text: 'Sicherung überfällig' }),
+    `${reminder.text} iOS löscht den Speicher von Web-Apps, die längere Zeit `,
+    'nicht geöffnet werden — dann wäre alles weg.',
+    el('div', { style: 'height: var(--space-3)' }),
+    el('button', {
+      type: 'button', class: 'btn btn--small', text: 'Jetzt sichern',
+      onclick: () => navigate('archiv'),
+    }));
+}
+
+export function render({ store, navigate }) {
   const state = store.getState();
   const today = todayKey();
 
@@ -266,6 +284,7 @@ export function render({ store }) {
     weekband(state, today),
     el('h1', { text: formatDayLong(today) }),
     el('div', { style: 'height: var(--space-4)' }),
+    backupReminder(state, today, navigate),
     readinessHero(readiness, guidance),
     checkinSection(store, today, readiness),
     allowanceCard(state, today, allowance, guidance),

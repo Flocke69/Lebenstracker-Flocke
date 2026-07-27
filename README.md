@@ -14,6 +14,19 @@ statt nur Zahlen zu sammeln.
 | **Essen** | Ziel-Makros nach Mifflin-St Jeor, Kohlenhydrate um Spiel- und Trainingstage periodisiert, Ist-Werte pro Tag |
 | **Trends** | Gewicht mit 7-Tage-Gleitschnitt, Schlaf, Bereitschaft, Trainingsvolumen je Muskelgruppe, Makro-Trefferquote |
 | **Review** | Wochen- und Monats-Review, regelbasiert, plus „Für Claude kopieren" für das ausführliche Gespräch |
+| **Profil** ⚙ | Kalorienziel, Defizit-Ausnahmetage, Makros pro Kilo, Spiel- und Trainingstage, Aktivitätsfaktoren |
+| **Archiv** ↓ | Sicherung erzeugen und zurückspielen, Monatsabschluss, Liste der abgeschlossenen Monate |
+
+### Die zwei Regeln, um die herum alles gebaut ist
+
+**Beinvolumen richtet sich nach dem Spielrhythmus, nicht nach der Laune.** Vor dem Spiel zählt
+Frische (mindestens 3 Tage Abstand), nach dem Spiel die eigene Erholung (mindestens 2 Tage) — zwei
+getrennte Schwellen, weil es zwei verschiedene Dinge sind. Am Spieltag und am Tag davor gibt die App
+gar kein Beinvolumen frei, unabhängig vom Bereitschafts-Wert. Die Bereitschaft kann die Stufe nur
+senken, nie anheben.
+
+**Ohne Sicherung wird nichts gelöscht.** „Monat abschließen" ist so lange gesperrt, bis die
+Exportdatei tatsächlich erzeugt wurde. Das ist eine Bedingung im Code, kein Hinweistext.
 
 ## Datenhaltung
 

@@ -41,8 +41,14 @@
   white-space: nowrap;
 }
 
-/* Das Profil hängt an der Kopfzeile statt in der Tab-Bar: fünf Reiter sind
-   voll, und man ändert sein Geburtsjahr nicht täglich. */
+.topbar__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/* Profil und Archiv hängen an der Kopfzeile statt in der Tab-Bar: fünf Reiter
+   sind voll, und man ändert sein Geburtsjahr nicht täglich. */
 .topbar__link {
   display: flex;
   align-items: center;
@@ -840,6 +846,80 @@ tr.is-today td {
   font-family: var(--font-display);
   font-size: var(--text-lg);
   font-variant-numeric: tabular-nums;
+}
+
+/* ─── Befunde im Review ──────────────────────────────────────────────────── */
+
+/* Jeder Befund trägt ein WORT für seine Dringlichkeit. Die Kante links ist
+   Zugabe, nicht die Information — Farbe allein trägt hier nichts. */
+.finding {
+  background: var(--surface);
+  border: 1px solid var(--line-200);
+  border-left-width: 2px;
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-bottom: var(--space-3);
+}
+
+.finding--alarm { border-left-color: var(--redcard-500); }
+.finding--warn { border-left-color: var(--sodium-500); }
+.finding--info { border-left-color: var(--line-300); }
+.finding--good { border-left-color: var(--data-500); }
+
+.finding__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+
+.finding__severity {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+  white-space: nowrap;
+}
+
+.finding--alarm .finding__severity { color: var(--redcard-500); }
+.finding--warn .finding__severity { color: var(--sodium-500); }
+.finding--info .finding__severity { color: var(--chalk-500); }
+.finding--good .finding__severity { color: var(--data-500); }
+
+.finding__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+}
+
+.finding__detail {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+  margin: 0;
+}
+
+.finding__action {
+  font-size: var(--text-sm);
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-200);
+}
+
+/* ─── Blättern zwischen Zeiträumen ───────────────────────────────────────── */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.pager__label {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  text-align: center;
+  flex: 1;
 }
 
 /* ─── Chips ──────────────────────────────────────────────────────────────── */

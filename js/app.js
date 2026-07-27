@@ -9,10 +9,13 @@ import { createStore, requestPersistentStorage } from './store.js';
 import { isProfileComplete } from './lib/state.js';
 import { formatMonth, monthKey, todayKey } from './lib/dates.js';
 import { el, replace } from './views/dom.js';
+import { needsRollover } from './lib/archive.js';
 import * as todayView from './views/today.js';
 import * as trainingView from './views/training.js';
 import * as nutritionView from './views/nutrition.js';
 import * as trendsView from './views/trends.js';
+import * as reviewView from './views/review.js';
+import * as archiveView from './views/archive.js';
 import * as profileView from './views/profile.js';
 import * as onboardingView from './views/onboarding.js';
 import * as placeholderView from './views/placeholder.js';
@@ -22,7 +25,9 @@ const VIEWS = {
   training: trainingView,
   essen: nutritionView,
   trends: trendsView,
+  review: reviewView,
   profil: profileView,
+  archiv: archiveView,
 };
 
 const ROUTES = [
@@ -38,11 +43,12 @@ const DEFAULT_ROUTE = 'heute';
 const store = createStore();
 const root = document.getElementById('app');
 
-/* Das Profil ist bewusst kein Reiter — es hängt an der Kopfzeile. */
-const EXTRA_ROUTES = ['profil'];
+/* Profil und Archiv sind bewusst keine Reiter — sie hängen an der Kopfzeile. */
+const EXTRA_ROUTES = ['profil', 'archiv'];
 
 function currentRoute() {
-  const id = location.hash.replace(/^#\/?/, '');
+  // Der Teil hinter `?` gehört der Ansicht (Zeitraum im Review), nicht der Route.
+  const id = location.hash.replace(/^#\/?/, '').split('?')[0];
   if (EXTRA_ROUTES.includes(id)) return id;
   return ROUTES.some((r) => r.id === id) ? id : DEFAULT_ROUTE;
 }
@@ -83,6 +89,16 @@ function renderOnboarding() {
   }));
 }
 
+/* Der Monatsabschluss legt sich VOR die App — ohne Reiter, ohne Ausweg.
+   Solange er offen ist, gibt es nichts anderes zu tun. */
+function renderRollover() {
+  root.className = 'app app--onboarding';
+  replace(root, archiveView.renderRollover({
+    store,
+    onDone: () => { navigate(DEFAULT_ROUTE); render(); },
+  }));
+}
+
 function renderApp() {
   const route = currentRoute();
   root.className = 'app';
@@ -98,14 +114,22 @@ function renderApp() {
   replace(root,
     el('header', { class: 'topbar' },
       el('span', { class: 'topbar__title', text: 'Lebenstracker' }),
-      el('button', {
-        type: 'button',
-        class: `topbar__link${route === 'profil' ? ' topbar__link--active' : ''}`,
-        onclick: () => navigate(route === 'profil' ? DEFAULT_ROUTE : 'profil'),
-        'aria-label': route === 'profil' ? 'Profil schließen' : 'Profil öffnen',
-      },
-        el('span', { class: 'topbar__sub', text: formatMonth(monthKey(todayKey())) }),
-        el('span', { class: 'topbar__gear', text: route === 'profil' ? '×' : '⚙', 'aria-hidden': 'true' }))),
+      el('div', { class: 'topbar__tools' },
+        el('button', {
+          type: 'button',
+          class: `topbar__link${route === 'archiv' ? ' topbar__link--active' : ''}`,
+          onclick: () => navigate(route === 'archiv' ? DEFAULT_ROUTE : 'archiv'),
+          'aria-label': 'Archiv und Sicherung',
+        },
+          el('span', { class: 'topbar__sub', text: formatMonth(monthKey(todayKey())) }),
+          el('span', { class: 'topbar__gear', text: '↓', 'aria-hidden': 'true' })),
+        el('button', {
+          type: 'button',
+          class: `topbar__link${route === 'profil' ? ' topbar__link--active' : ''}`,
+          onclick: () => navigate(route === 'profil' ? DEFAULT_ROUTE : 'profil'),
+          'aria-label': route === 'profil' ? 'Profil schließen' : 'Profil öffnen',
+        },
+          el('span', { class: 'topbar__gear', text: route === 'profil' ? '×' : '⚙', 'aria-hidden': 'true' })))),
     viewSlot,
     el('nav', { class: 'tabbar', 'aria-label': 'Bereiche' },
       ROUTES.map((r) => el('button', {
@@ -127,6 +151,7 @@ function render() {
 
   try {
     if (!isProfileComplete(store.getState()?.profile)) renderOnboarding();
+    else if (needsRollover(store.getState())) renderRollover();
     else {
       renderApp();
       if (openReveals > 0) {
