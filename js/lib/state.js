@@ -152,7 +152,24 @@ function validateDayPatch(patch) {
   if ('sessions' in patch && !Array.isArray(patch.sessions)) {
     throw new TypeError(`sessions muss ein Array sein, war: ${patch.sessions}`);
   }
+  if (isPlainObject(patch.nutrition)) {
+    const limits = { kcal: 8000, proteinG: 600, carbsG: 1200, fatG: 400 };
+    for (const [field, max] of Object.entries(limits)) {
+      const value = patch.nutrition[field];
+      if (value !== null && value !== undefined) {
+        assertNumber(value, `nutrition.${field}`, 0, max);
+      }
+    }
+  }
   return patch;
+}
+
+/** Kalorien aus den Makros, für Plausibilitätshinweise. */
+export function kcalFromMacros(nutrition) {
+  if (!isPlainObject(nutrition)) return null;
+  const { proteinG, carbsG, fatG } = nutrition;
+  if ([proteinG, carbsG, fatG].some((v) => typeof v !== 'number')) return null;
+  return proteinG * 4 + carbsG * 4 + fatG * 9;
 }
 
 /**

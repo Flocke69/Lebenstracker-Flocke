@@ -11,11 +11,19 @@ import { formatMonth, monthKey, todayKey } from './lib/dates.js';
 import { el, replace } from './views/dom.js';
 import * as todayView from './views/today.js';
 import * as trainingView from './views/training.js';
+import * as nutritionView from './views/nutrition.js';
+import * as trendsView from './views/trends.js';
 import * as profileView from './views/profile.js';
 import * as onboardingView from './views/onboarding.js';
 import * as placeholderView from './views/placeholder.js';
 
-const VIEWS = { heute: todayView, training: trainingView, profil: profileView };
+const VIEWS = {
+  heute: todayView,
+  training: trainingView,
+  essen: nutritionView,
+  trends: trendsView,
+  profil: profileView,
+};
 
 const ROUTES = [
   { id: 'heute', label: 'Heute', glyph: '◎' },

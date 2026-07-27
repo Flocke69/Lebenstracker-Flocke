@@ -17,9 +17,10 @@
  *   v2  Phase 2 — Check-in, Bereitschaft, Dezimaleingabe mit Komma
  *   v3  Phase 4 — Trainingsplan, Übungskatalog, Satz-Logger
  *   v4  Profil-Screen, Kaloriendefizit mit Ausnahmetagen
+ *   v5  Phase 3+5 — Ernährung, Trends, Charts
  */
 
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -45,6 +46,10 @@ const PRECACHE = [
   './js/views/today.js',
   './js/views/training.js',
   './js/views/profile.js',
+  './js/lib/aggregate.js',
+  './js/views/nutrition.js',
+  './js/views/trends.js',
+  './js/views/chart.js',
   './js/views/placeholder.js',
   './fonts/barlow-condensed-600-latin.woff2',
   './fonts/inter-var-latin.woff2',

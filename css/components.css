@@ -326,6 +326,18 @@
   border-radius: var(--radius-sm);
 }
 
+/* Über dem Ziel wird der Balken nicht länger — ein Ausrutscher würde sonst
+   die Skala aller anderen Tage zerstören. Stattdessen der Signalton. */
+.macro__fill--over {
+  background: var(--sodium-500);
+}
+
+/* Zeile des heutigen Tages in Wochentabellen */
+tr.is-today td {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 /* ─── Bereitschaft — der Held des Heute-Screens ──────────────────────────── */
 
 /* Die Zahl beantwortet nicht "wie fühle ich mich", sondern "was mache ich
@@ -662,6 +674,172 @@
 
 .setrow__head span {
   text-align: center;
+}
+
+/* ─── Charts ─────────────────────────────────────────────────────────────── */
+
+.chart-wrap {
+  margin-top: var(--space-2);
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+}
+
+/* Achsen und Gitter zurückgenommen — sie sind Orientierung, nicht Inhalt. */
+.chart__grid {
+  stroke: var(--line-200);
+  stroke-width: 1;
+}
+
+.chart__axis {
+  fill: var(--chalk-500);
+  font-family: var(--font-body);
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Schwellen als Position, nicht als Farbe: gestrichelte Kreidelinie. */
+.chart__ref {
+  stroke: var(--line-300);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.chart__ref-label {
+  fill: var(--chalk-500);
+  font-family: var(--font-body);
+  font-size: 7.5px;
+}
+
+/* Die geglättete Linie ist die Aussage — deshalb der Signalton. */
+.chart__line {
+  fill: none;
+  stroke: var(--sodium-500);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart__line-dot {
+  fill: var(--sodium-500);
+}
+
+/* Rohwerte in Kreide: sichtbar, aber nicht die Hauptaussage. */
+.chart__dot {
+  fill: var(--chalk-100);
+}
+
+.chart__bar {
+  fill: var(--data-500);
+}
+
+.chart__bar--now {
+  fill: var(--sodium-500);
+}
+
+.chart__hit {
+  cursor: pointer;
+}
+
+.chart__hit:focus-visible {
+  outline: 2px solid var(--sodium-500);
+  outline-offset: -2px;
+}
+
+.chart__readout {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+  margin: var(--space-2) 0 0;
+  min-height: 1.2em;
+}
+
+/* Small Multiples: ein Mini-Chart je Muskelgruppe */
+.spark-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--space-4) var(--space-3);
+}
+
+.spark-cell__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.spark-cell__label {
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.spark-cell__value {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.spark {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Eine Woche ohne Volumen: Strich auf der Grundlinie statt gar nichts. */
+.chart__bar-empty {
+  fill: var(--line-300);
+}
+
+.spark-cell__foot {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--chalk-500);
+}
+
+.spark-cell__prev {
+  color: var(--chalk-500);
+}
+
+.reveal--table > summary {
+  padding: var(--space-3) 0;
+  min-height: 40px;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+}
+
+.reveal--table {
+  border: 0;
+  background: none;
+  border-top: 1px solid var(--line-200);
+  border-radius: 0;
+  margin-top: var(--space-3);
+  margin-bottom: 0;
+}
+
+.reveal--table .reveal__body {
+  padding: 0 0 var(--space-3);
+}
+
+/* Text-Hinweise unter den Charts — die eigentliche Erkenntnis. */
+.insight {
+  font-size: var(--text-sm);
+  padding: var(--space-3) 0 0;
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--line-200);
+  color: var(--ink);
+}
+
+.insight b {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ─── Chips ──────────────────────────────────────────────────────────────── */
