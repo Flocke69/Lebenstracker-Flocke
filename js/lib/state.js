@@ -176,6 +176,123 @@ export function withDay(state, key, patch) {
   return { ...state, days: { ...state.days, [key]: next } };
 }
 
+/* ─── Trainingseinheiten ─────────────────────────────────────────────────── */
+
+/** Geloggte Einheit zu einer Plan-Kennung, oder null. */
+export function getSession(state, dayKey, planId) {
+  return getDay(state, dayKey).sessions.find((s) => s.planId === planId) ?? null;
+}
+
+/** Die geloggten Sätze einer Übung an einem Tag. Nie undefined. */
+export function getSets(state, dayKey, planId, exId) {
+  const session = getSession(state, dayKey, planId);
+  return session?.exercises.find((e) => e.exId === exId)?.sets ?? [];
+}
+
+function validateSet(patch) {
+  if (!isPlainObject(patch)) {
+    throw new TypeError(`Satz muss ein Objekt sein, war: ${patch}`);
+  }
+  if (patch.reps !== null && patch.reps !== undefined) {
+    assertNumber(patch.reps, 'reps', 1, 500);
+  }
+  if (patch.kg !== null && patch.kg !== undefined) {
+    assertNumber(patch.kg, 'kg', 0, 500);
+  }
+  if (patch.rpe !== null && patch.rpe !== undefined) {
+    assertNumber(patch.rpe, 'rpe', 1, 10);
+  }
+  return patch;
+}
+
+/**
+ * Einen Satz schreiben.
+ *
+ * Einheit und Übung werden bei Bedarf angelegt. Lücken zwischen den Sätzen
+ * werden mit `null` aufgefüllt: wer erst Satz 3 einträgt, soll nicht daran
+ * scheitern — gezählt werden später nur die tatsächlich gefüllten.
+ */
+export function withSet(state, dayKey, planId, exId, setIndex, patch) {
+  parseKey(dayKey);
+  validateSet(patch);
+  if (!Number.isInteger(setIndex) || setIndex < 0 || setIndex > 49) {
+    throw new RangeError(`setIndex muss 0–49 sein, war: ${setIndex}`);
+  }
+
+  const day = getDay(state, dayKey);
+  const sessions = [...day.sessions];
+
+  let sessionIndex = sessions.findIndex((s) => s.planId === planId);
+  if (sessionIndex === -1) {
+    sessions.push({ planId, exercises: [], sessionRpe: null });
+    sessionIndex = sessions.length - 1;
+  }
+
+  const session = { ...sessions[sessionIndex] };
+  const exercises = [...session.exercises];
+
+  let exIndex = exercises.findIndex((e) => e.exId === exId);
+  if (exIndex === -1) {
+    exercises.push({ exId, sets: [] });
+    exIndex = exercises.length - 1;
+  }
+
+  const sets = [...exercises[exIndex].sets];
+  while (sets.length <= setIndex) sets.push(null);
+  sets[setIndex] = { reps: null, kg: null, rpe: null, ...(sets[setIndex] ?? {}), ...patch };
+
+  exercises[exIndex] = { ...exercises[exIndex], sets };
+  session.exercises = exercises;
+  sessions[sessionIndex] = session;
+
+  return withDay(state, dayKey, { sessions });
+}
+
+/** Einen Satz wieder entfernen. Leere Übungen und Einheiten fallen mit weg. */
+export function withoutSet(state, dayKey, planId, exId, setIndex) {
+  const day = getDay(state, dayKey);
+  const sessions = day.sessions
+    .map((session) => {
+      if (session.planId !== planId) return session;
+      const exercises = session.exercises
+        .map((entry) => {
+          if (entry.exId !== exId) return entry;
+          const sets = entry.sets.filter((_, i) => i !== setIndex);
+          return { ...entry, sets };
+        })
+        .filter((entry) => entry.sets.some(Boolean));
+      return { ...session, exercises };
+    })
+    .filter((session) => session.exercises.length > 0);
+
+  return withDay(state, dayKey, { sessions });
+}
+
+/**
+ * Wann wurde diese Übung zuletzt gemacht, und mit was?
+ *
+ * Das ist die "letztes Mal"-Anzeige im Logger. Ohne sie ist Progression
+ * Ratespiel — man erinnert sich nicht an das Gewicht von vor einer Woche.
+ * Der heutige Tag wird ausgeklammert, sonst zeigt die Anzeige den Satz, den
+ * man gerade eingetragen hat.
+ */
+export function lastPerformance(state, beforeDayKey, exId) {
+  parseKey(beforeDayKey);
+  const keys = Object.keys(state.days ?? {})
+    .filter((k) => k < beforeDayKey)
+    .sort()
+    .reverse();
+
+  for (const key of keys) {
+    for (const session of state.days[key].sessions ?? []) {
+      const entry = session.exercises?.find((e) => e.exId === exId);
+      const sets = (entry?.sets ?? []).filter(Boolean);
+      if (sets.length > 0) return { dayKey: key, sets };
+    }
+  }
+  return null;
+}
+
 /* ─── Profil ─────────────────────────────────────────────────────────────── */
 
 /** Profil prüfen und mit Standardwerten auffüllen. */

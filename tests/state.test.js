@@ -12,6 +12,11 @@ import {
   missingProfileFields,
   weightOn,
   dayTypeFor,
+  getSession,
+  getSets,
+  withSet,
+  withoutSet,
+  lastPerformance,
 } from '../js/lib/state.js';
 
 const PROFILE = {
@@ -193,6 +198,105 @@ suite('state — Profil', () => {
     s = withProfile(s, { kcalOffset: -150 });
     eq(s.profile.kcalOffset, -150);
     eq(s.profile.heightCm, 180, 'Rest bleibt erhalten');
+  });
+});
+
+suite('state — Trainingseinheiten loggen', () => {
+  const base = () => withProfile(emptyState('2026-07'), PROFILE);
+
+  test('der erste Satz legt Einheit und Übung mit an', () => {
+    const s = withSet(base(), '2026-07-27', 'a-push', 'ohp_db', 0, { reps: 10, kg: 20 });
+    const sets = getSets(s, '2026-07-27', 'a-push', 'ohp_db');
+    eq(sets.length, 1);
+    eq(sets[0].reps, 10);
+    eq(sets[0].kg, 20);
+    eq(sets[0].rpe, null, 'RPE bleibt offen, bis es eingetragen wird');
+  });
+
+  test('weitere Sätze reihen sich an', () => {
+    let s = base();
+    s = withSet(s, '2026-07-27', 'a-push', 'ohp_db', 0, { reps: 10, kg: 20 });
+    s = withSet(s, '2026-07-27', 'a-push', 'ohp_db', 1, { reps: 9, kg: 20 });
+    eq(getSets(s, '2026-07-27', 'a-push', 'ohp_db').length, 2);
+  });
+
+  test('ein Satz lässt sich nachträglich ergänzen, ohne den Rest zu verlieren', () => {
+    let s = base();
+    s = withSet(s, '2026-07-27', 'a-push', 'ohp_db', 0, { reps: 10, kg: 20 });
+    s = withSet(s, '2026-07-27', 'a-push', 'ohp_db', 0, { rpe: 8 });
+    const set = getSets(s, '2026-07-27', 'a-push', 'ohp_db')[0];
+    eq(set.reps, 10, 'Wiederholungen bleiben');
+    eq(set.rpe, 8);
+  });
+
+  test('wer mit Satz 3 anfängt, bekommt Lücken statt einer Fehlermeldung', () => {
+    const s = withSet(base(), '2026-07-27', 'a-push', 'ohp_db', 2, { reps: 8, kg: 22.5 });
+    const sets = getSets(s, '2026-07-27', 'a-push', 'ohp_db');
+    eq(sets.length, 3);
+    eq(sets[0], null);
+    eq(sets[1], null);
+    eq(sets[2].reps, 8);
+  });
+
+  test('mehrere Übungen in derselben Einheit', () => {
+    let s = base();
+    s = withSet(s, '2026-07-27', 'a-push', 'ohp_db', 0, { reps: 10, kg: 20 });
+    s = withSet(s, '2026-07-27', 'a-push', 'lateral_raise', 0, { reps: 15, kg: 8 });
+    eq(getSession(s, '2026-07-27', 'a-push').exercises.length, 2);
+  });
+
+  test('unsinnige Sätze werden abgewiesen', () => {
+    const s = base();
+    throws(() => withSet(s, '2026-07-27', 'a-push', 'ohp_db', 0, { reps: 0 }));
+    throws(() => withSet(s, '2026-07-27', 'a-push', 'ohp_db', 0, { kg: -5 }));
+    throws(() => withSet(s, '2026-07-27', 'a-push', 'ohp_db', 0, { rpe: 12 }));
+    throws(() => withSet(s, '2026-07-27', 'a-push', 'ohp_db', -1, { reps: 8 }));
+  });
+
+  test('withoutSet räumt leere Übungen und Einheiten mit weg', () => {
+    let s = base();
+    s = withSet(s, '2026-07-27', 'a-push', 'ohp_db', 0, { reps: 10, kg: 20 });
+    s = withoutSet(s, '2026-07-27', 'a-push', 'ohp_db', 0);
+    eq(getDay(s, '2026-07-27').sessions.length, 0, 'keine leere Hülle zurücklassen');
+  });
+
+  test('das Original bleibt beim Schreiben unberührt', () => {
+    const before = base();
+    withSet(before, '2026-07-27', 'a-push', 'ohp_db', 0, { reps: 10, kg: 20 });
+    eq(getDay(before, '2026-07-27').sessions.length, 0);
+  });
+});
+
+suite('state — letztes Mal', () => {
+  const base = () => withProfile(emptyState('2026-07'), PROFILE);
+
+  test('findet den letzten Tag mit dieser Übung', () => {
+    let s = base();
+    s = withSet(s, '2026-07-13', 'a-push', 'ohp_db', 0, { reps: 10, kg: 20 });
+    s = withSet(s, '2026-07-20', 'a-push', 'ohp_db', 0, { reps: 10, kg: 22.5 });
+    const last = lastPerformance(s, '2026-07-27', 'ohp_db');
+    eq(last.dayKey, '2026-07-20', 'der jüngste zählt');
+    eq(last.sets[0].kg, 22.5);
+  });
+
+  test('der heutige Tag zählt nicht mit', () => {
+    // Sonst zeigt "letztes Mal" den Satz, den man gerade eingetippt hat.
+    let s = base();
+    s = withSet(s, '2026-07-20', 'a-push', 'ohp_db', 0, { reps: 10, kg: 22.5 });
+    s = withSet(s, '2026-07-27', 'a-push', 'ohp_db', 0, { reps: 11, kg: 22.5 });
+    eq(lastPerformance(s, '2026-07-27', 'ohp_db').dayKey, '2026-07-20');
+  });
+
+  test('ohne Vorgeschichte kommt null zurück', () => {
+    eq(lastPerformance(base(), '2026-07-27', 'ohp_db'), null);
+  });
+
+  test('leere Lücken werden übersprungen', () => {
+    let s = base();
+    s = withSet(s, '2026-07-20', 'a-push', 'ohp_db', 2, { reps: 8, kg: 25 });
+    const last = lastPerformance(s, '2026-07-27', 'ohp_db');
+    eq(last.sets.length, 1, 'nur der tatsächlich gefüllte Satz');
+    eq(last.sets[0].kg, 25);
   });
 });
 

@@ -98,23 +98,41 @@
   <div id="out" class="loading">Tests laufen …</div>
 
   <script type="module">
-    import { report } from './tests/harness.js';
-
     const out = document.getElementById('out');
 
     // Jede neue Testdatei hier eintragen.
     const files = [
-      './tests/dates.test.js',
-      './tests/energy.test.js',
-      './tests/planner.test.js',
-      './tests/state.test.js',
-      './tests/readiness.test.js',
-      './tests/input.test.js',
+      '/tests/dates.test.js',
+      '/tests/energy.test.js',
+      '/tests/planner.test.js',
+      '/tests/state.test.js',
+      '/tests/readiness.test.js',
+      '/tests/input.test.js',
+      '/tests/volume.test.js',
     ];
 
+    /* Beim Entwickeln muss jeder Lauf die aktuellen Dateien sehen.
+     *
+     * Browser halten ES-Module fest, teils prozessweit und ohne Rücksicht auf
+     * `Cache-Control: no-store`. Eine Kennung an der Adresse reicht nicht:
+     * relative Importe erben sie nicht, `../js/lib/state.js` gegen
+     * `/tests/x.test.js?t=1` ergibt wieder die Adresse ohne Kennung — die
+     * Testdatei wäre frisch, die geprüfte Datei nicht.
+     *
+     * Ein PFAD-Präfix wird dagegen mitgeführt. tools/serve.py schneidet
+     * `/v/<zahl>/` wieder ab. Auf GitHub Pages gibt es das nicht, dort wird
+     * ganz normal geladen.
+     */
+    const IS_LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+    const prefix = IS_LOCAL ? `/v/${Date.now()}` : '.';
+
     try {
+      // Das Harness MUSS über dasselbe Präfix kommen — sonst registrieren die
+      // Testdateien ihre Fälle in einer zweiten, unabhängigen Instanz und der
+      // Bericht bliebe leer.
+      const { report } = await import(`${prefix}/tests/harness.js`);
       // Reihenfolge beibehalten, damit der Bericht stabil bleibt.
-      for (const f of files) await import(f);
+      for (const f of files) await import(prefix + f);
       out.className = '';
       report(out);
     } catch (err) {
