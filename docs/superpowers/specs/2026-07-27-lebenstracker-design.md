@@ -219,15 +219,16 @@ nicht aus einem UI-Kit.
 ### 6.1 Farbe
 
 ```
---pitch-900   #0C120F   Seitenhintergrund (grünstichiges Schwarz, nie reines #000)
---pitch-800   #131C17   Kartenfläche
---pitch-700   #1B2620   erhöhte Fläche, Eingabefelder
---chalk-100   #EDF1EC   Primärtext, Datenmarken (Kalkmarkierung)
---chalk-500   #8A968D   Labels, Sekundärtext
---line-200    rgba(237,241,236,0.14)   Haarlinie = Spielfeldmarkierung
---sodium-500  #FF8A1F   Signalton: Warnung, aktueller Wert, Hervorhebung
---sodium-200  #FFC486   heller Schritt für Chart-Flächen
---alarm-600   #E23D2E   ausschließlich für „Ruhetag/Abbruch"
+--pitch-900    #0C120F   Seitenhintergrund (grünstichiges Schwarz, nie reines #000)
+--pitch-800    #131C17   Kartenfläche
+--pitch-700    #1B2620   erhöhte Fläche, Eingabefelder
+--chalk-100    #EDF1EC   Primärtext, Datenpunkte (Kalkmarkierung)      16,6:1
+--chalk-500    #8A968D   Labels, Sekundärtext                           6,2:1
+--line-200     rgba(237,241,236,0.14)   Haarlinie = Spielfeldmarkierung
+--data-500     #63796F   recessive Balken und Marken, NUR Grafik        4,1:1
+--sodium-500   #FF8A1F   Signalton: Warnung, aktueller Wert             8,0:1
+--sodium-fill  rgba(255,138,31,0.16)    Fläche unter Linien
+--redcard-500  #F53B5C   Textfarbe für den Zustand „Ruhetag"            5,1:1
 ```
 
 **Bewusste Abweichung von der Konvention: kein Ampelsystem.** „Alles gut" ist die *Abwesenheit* von
@@ -237,13 +238,42 @@ Farbfehlsichtigkeit, eine Hue-Codierung nicht; und ein Grün-Gelb-Rot-Dashboard 
 einem Baukasten. Jeder Status trägt **immer zusätzlich ein Wort** („Bereit" / „Volumen reduziert" /
 „Ruhetag") — nie Farbe allein.
 
+### 6.1.1 Was die Farbprüfung erzwungen hat
+
+Die Palette wurde nicht nach Augenmaß festgelegt, sondern gegen `tools/check_contrast.py`
+geführt. Der Prüfer hat drei Entwürfe verworfen — die Korrekturen sind Teil des Designs, nicht
+Nachbesserung:
+
+1. **Ein heller Sodium-Schritt (`#FFC486`) fiel durch.** Er lag bei ΔE 13,8 zu Kreideweiß und
+   ΔE 13,6 zu `--sodium-500` — unter der Untergrenze von 15. Ein Balken in dieser Farbe wäre neben
+   einem hervorgehobenen Balken nicht zuverlässig zu unterscheiden gewesen. Ersetzt durch
+   `--data-500`, ein entsättigtes Platzgrün, das ΔE 27 zu Sodium hält und als recessive Marke
+   ohnehin die bessere Wahl ist.
+
+2. **Kein Rot erfüllt beide Bedingungen gleichzeitig.** Auf so dunklem Grund braucht Rot
+   Helligkeit für 4,5:1 — und Rot aufhellen heißt Rot in Richtung Orange schieben, also gegen den
+   Signalton. Getestet wurden elf Kandidaten, alle scheiterten. Lösung ist eine Verschiebung
+   Richtung Magenta: `--redcard-500 #F53B5C` erreicht 4,69:1 auf Kartenfläche bei ΔE 17,3 zu
+   Sodium. Es liest sich als **Rote Karte** — damit ist der Token auch inhaltlich im Thema.
+
+3. **Rot gehört in kein Chart.** Gegen `--data-500` kollabiert `--redcard-500` bei Protanopie auf
+   ΔE 3,7 — der klassische Rot-Grün-Zusammenfall. Rote Balken wären für Protanopen unsichtbar.
+   Konsequenz: Charts benutzen ausschließlich Kreide, `--data-500` und Sodium. Schwellenwerte
+   (Schlaf 6,5 h, Bereitschaft 50 und 75) werden als **Referenzlinie** gezeichnet — Position ist
+   die robustere Kodierung und funktioniert bei jeder Sehschwäche.
+
+Die Nutzungsregeln, auf denen der Bericht beruht, gibt `check_contrast.py` in Abschnitt 4 selbst
+aus und `css/tokens.css` wiederholt sie als Kommentar. Ohne das könnte späterer Code die Prüfung
+still entkräften.
+
 ### 6.2 Typografie
 
 **Barlow Condensed 600** für Zahlen und Überschriften: schmal, sportlich, in der Anmutung einer
 Trikotnummer — und schmale Ziffern lassen große Werte auf ein Handydisplay passen.
-**Inter 400/600** für Fließtext und Bedienelemente, weil es bei kleinen Größen auf dem Handy besser
-lesbar ist. Beide als `woff2` im Repo (SIL OFL, `fonts/LICENSE`), damit die App vollständig offline
-läuft und keine Google-Fonts-Abrufe macht.
+**Inter** für Fließtext und Bedienelemente, weil es bei kleinen Größen auf dem Handy besser lesbar
+ist — als Variable Font, eine Datei für die gesamte Gewichtsachse. Beide als `woff2` im Repo
+(zusammen 64 KB, SIL OFL, `fonts/LICENSE`), damit die App vollständig offline läuft und zur Laufzeit
+keine Google-Fonts-Abrufe macht.
 
 Typenskala 12 / 14 / 16 / 20 / 28 / 44 / 64. Die 64 ist ausschließlich für den Bereitschafts-Wert
 reserviert. Zahlen immer mit `font-variant-numeric: tabular-nums`.
@@ -270,9 +300,14 @@ Charts als handgeschriebenes Inline-SVG, keine Bibliothek. Regeln:
   Handydisplay ohnehin lesbarer als ein Kombi-Diagramm.
 - Gewicht: Rohpunkte in Kreide (8 px) + 7-Tage-Gleitschnitt als 2-px-Linie in Sodium. Der
   Gleitschnitt ist der Punkt — Tagesgewicht ist Rauschen.
-- Balken (Schlaf, Kalorien, Protein): 4 px gerundete Datenenden an der Grundlinie, 2 px Lücke
-  zwischen Balken, Zielwert als Referenzlinie.
-- Volumen: gestapelte Wochenbalken, 2 px Flächenabstand zwischen Segmenten.
+- Balken (Schlaf, Kalorien, Protein): `--data-500`, 4 px gerundete Datenenden an der Grundlinie,
+  2 px Lücke zwischen Balken, aktueller Tag in Sodium hervorgehoben, Zielwert als Referenzlinie.
+- **Volumen je Muskelgruppe: Small Multiples, kein gestapelter Balken.** Ein gestapelter Balken mit
+  sechs Muskelgruppen bräuchte sechs kategorial unterscheidbare Farbtöne — das würde die
+  Ein-Hue-Disziplin sprengen und wäre auf einem Handydisplay ohnehin schwer zu lesen. Stattdessen
+  sechs kleine Einzelcharts in einem Raster, jedes einserig. Die tatsächliche Frage lautet „steigt
+  mein Schultervolumen?", und die beantwortet ein Verlauf pro Muskelgruppe besser als ein Segment
+  in einem Stapel.
 - Eine Serie → kein Legendenkasten, der Titel benennt sie. Werte nur selektiv beschriftet, niemals
   an jedem Punkt. Achsen und Gitter zurückgenommen (`--line-200`).
 - **Tippen statt Hover:** Antippen eines Punktes zeigt Datum und Wert, Trefferfläche größer als die
