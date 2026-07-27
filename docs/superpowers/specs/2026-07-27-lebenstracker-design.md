@@ -337,17 +337,22 @@ vor dem Spiel, 4 danach, und einen Tag **nach** dem Mannschaftstraining statt da
 |---|---|---|
 | **Mo** | Drücken | Bankdrücken KH · Schrägbank KH · Brustfliegende · Schulterdrücken · Seitheben · Trizeps über Kopf |
 | **Di** | Ziehen | Latzug · Negativ-Klimmzüge · Rudern KH · Face Pulls · Bizeps-Curls · Hammer-Curls |
-| **Do** | Beine und Rumpf | RDL · Bulgarische Kniebeuge · **Prophylaxe** · Trizeps-Drücken · Pallof-Press |
+| **Do** | Beine und Arme | RDL · Bulgarische Kniebeuge · **Prophylaxe** · Trizeps-Drücken · Schrägbank-Curls |
 
 **Kein Schwerpunkt auf einzelnen Muskelgruppen** (Flockes Vorgabe nach dem ersten Entwurf). Die
-großen Oberkörpergruppen liegen dicht beieinander: Rücken 14 · Schultern 12,5 · Brust 11,5 ·
-Bizeps 11,5 · Trizeps 11 Sätze pro Woche — Faktor 1,27 zwischen größter und kleinster. 60 Sätze
-gesamt. Ein Test in `tests/volume.test.js` hält die Balance fest, damit spätere Planänderungen sie
-nicht unbemerkt kippen.
+großen Oberkörpergruppen liegen dicht beieinander: Bizeps 14,5 · Rücken 14 · Schultern 12,5 ·
+Brust 11,5 · Trizeps 11 Sätze pro Woche — Faktor 1,32 zwischen größter und kleinster. 60 Sätze
+gesamt. Ein Test in `tests/volume.test.js` hält die Balance fest (Grenze 1,35), damit spätere
+Planänderungen sie nicht unbemerkt kippen.
 
-Dass der Rücken oben liegt, ist kein Schwerpunkt, sondern Statik: er zieht die Schulter gegen alles
-Drücken zurück. Und die Schulter lässt sich nicht tiefer bringen — sie arbeitet bei jedem Druck mit
-und bekommt zusätzlich die Face Pulls ab.
+Dass der Rücken weit oben liegt, ist kein Schwerpunkt, sondern Statik: er zieht die Schulter gegen
+alles Drücken zurück. Und die Schulter lässt sich nicht tiefer bringen — sie arbeitet bei jedem
+Druck mit und bekommt zusätzlich die Face Pulls ab.
+
+**Rumpfarbeit ist auf Flockes Wunsch aus dem Plan geflogen** (die Pallof-Press am Donnerstag, zu
+Gunsten einer dritten Bizepsübung). Damit bleibt für den Rumpf nur die Nebenwirkung der Copenhagen
+Plank sowie die Haltearbeit bei Kreuzheben und Bulgarischer Kniebeuge. Die Übung steht weiter im
+Katalog und lässt sich jederzeit zurückholen.
 
 **Beinvolumen: 15 Sätze, einmal pro Woche, ausschließlich Donnerstag.** RDL 3 · Bulgarische
 Kniebeuge 3 · exzentrische Beincurls 3 · Copenhagen Plank 3 · Waden 3. Der Prophylaxeblock kostet

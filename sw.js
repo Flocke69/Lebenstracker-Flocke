@@ -21,9 +21,10 @@
  *   v6  Phase 6+7 — Reviews, Monatsarchiv, Export und Import
  *   v7  Trefferflächen der Kopfzeile auf 44 px
  *   v8  Trainingsplan ohne Schwerpunkt, Oberkörper gleichmäßig
+ *   v9  Donnerstag: Rumpfübung raus, dritte Bizepsübung rein
  */
 
-const CACHE_VERSION = 'v8';
+const CACHE_VERSION = 'v9';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [

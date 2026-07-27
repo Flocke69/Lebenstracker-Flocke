@@ -133,7 +133,7 @@ export const SESSIONS = Object.freeze([
   {
     id: 'c-legs-shoulders',
     weekday: 4,
-    name: 'Beine und Rumpf',
+    name: 'Beine und Arme',
     focus: 'der einzige Beintag',
     intro:
       'Drei Tage vor dem Spiel — der einzige Tag der Woche, an dem schwere '
@@ -169,10 +169,12 @@ export const SESSIONS = Object.freeze([
       },
       {
         // Kurze Sätze mit wenig Pause — sie verlängern die Einheit kaum.
-        name: 'Zum Abschluss',
+        // Schrägbank-Curls statt der Curls vom Dienstag: zurückgelehnt startet
+        // der Bizeps in voller Dehnung, das ist ein anderer Reiz.
+        name: 'Arme',
         exercises: [
           { id: 'triceps_pushdown', sets: 3, repsMin: 12, repsMax: 15, rpe: 9 },
-          { id: 'pallof_press', sets: 3, repsMin: 10, repsMax: 12, rpe: 7 },
+          { id: 'curl_incline_db', sets: 3, repsMin: 10, repsMax: 15, rpe: 9 },
         ],
       },
     ],

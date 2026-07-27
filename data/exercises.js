@@ -140,6 +140,16 @@ export const EXERCISES = Object.freeze({
     loadsLegs: false,
     note: 'Trifft den Armbeuger darunter — macht den Arm dicker als Curls allein.',
   },
+  curl_incline_db: {
+    name: 'Schrägbank-Curls',
+    variant: 'Kurzhantel, zurückgelehnt',
+    primary: 'biceps',
+    secondary: [],
+    loadsLegs: false,
+    note: 'Zurückgelehnt hängen die Arme hinter dem Körper — der Bizeps startet in '
+        + 'voller Dehnung. Das ist ein anderer Reiz als stehende Curls, deshalb '
+        + 'steht die Übung an einem anderen Tag.',
+  },
 
   /* ─── Beine ──────────────────────────────────────────────────────────── */
 
