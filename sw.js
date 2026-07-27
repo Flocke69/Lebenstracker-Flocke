@@ -19,9 +19,10 @@
  *   v4  Profil-Screen, Kaloriendefizit mit Ausnahmetagen
  *   v5  Phase 3+5 — Ernährung, Trends, Charts
  *   v6  Phase 6+7 — Reviews, Monatsarchiv, Export und Import
+ *   v7  Trefferflächen der Kopfzeile auf 44 px
  */
 
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v7';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
