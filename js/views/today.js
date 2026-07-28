@@ -1,60 +1,97 @@
 /* Heute — der Screen, der täglich benutzt wird.
  *
- * Aufbau folgt der Frage, die morgens ansteht: "Was mache ich heute?"
+ * Aufbau folgt der Reihenfolge, in der die Fragen morgens auftauchen:
  *
- *   1. Wochenband     — wo stehe ich in der Woche, wie weit ist das Spiel
- *   2. Bereitschaft    — die Antwort, als Zahl mit Anweisung und Begründung
- *   3. Check-in        — die Eingabe dafür (zugeklappt, wenn schon erledigt)
- *   4. Beine heute     — die harte Regel rund um den Spieltag
- *   5. Ziel heute      — Kalorien und Makros
- *   6. Gewicht
+ *   1. Wochenband       — wo stehe ich, und ANTIPPBAR: Tage durchblättern
+ *   2. Monats-Review    — nur am Monatsende, dann aber ganz oben
+ *   3. Check-in         — eine Karte, die ein Fenster öffnet
+ *   4. Training heute   — was ansteht, mit "Starten" und "Verschieben"
+ *   5. Gewicht          — Erinnerung, Eingabe, Wochenstreifen
+ *
+ * WAS HIER BEWUSST NICHT STEHT:
+ *
+ *   Die Bereitschaft als Zahl von 0 bis 100. Statt der Zahl steht die
+ *   Statusgrafik in der Check-in-Karte.
+ *
+ *   Die Beinfreigabe als eigene Karte. Die Regel gilt weiter und ist dort
+ *   wirksam, wo sie etwas bewirkt: im Trainingsfenster, an der einzelnen Übung.
+ *   Auf dem Startscreen war sie eine Erklärung ohne Handlung.
+ *
+ *   Kalorien und Makros. Die stehen im Reiter Essen, wo sie hingehören — hier
+ *   waren sie eine Zahl, die man morgens nicht braucht.
+ *
+ * Der Screen kann jeden Tag der laufenden Woche zeigen, nicht nur heute — die
+ * Route trägt den Tag als `#/heute?day=YYYY-MM-DD`. Das ist die einzige Stelle,
+ * an der ein Tag nachgetragen werden kann, und sie ist genau einen Fingertipp
+ * vom Wochenband entfernt.
  */
 
 import {
   todayKey, weekKeys, weekdayShort, parseKey, formatDayLong, weekdayOf,
+  addDays, weekStartKey, formatDayShort, formatMonth, WEEKDAYS_LONG,
 } from '../lib/dates.js';
-import { dayTypeFor, weightOn, getDay } from '../lib/state.js';
-import { dayTargets, DAY_TYPE_LABELS, ageOn, KCAL_PER_G } from '../lib/energy.js';
-import { legVolumeAllowance } from '../lib/planner.js';
-import { readinessScore, trainingGuidance } from '../lib/readiness.js';
+import { dayTypeFor, weightOn, getDay, getSession, sessionMinutes } from '../lib/state.js';
+import { DAY_TYPE_LABELS } from '../lib/energy.js';
+import { readinessScore, CHECKIN_FIELDS } from '../lib/readiness.js';
+import { sessionForDay, weekPlan, moveTargets, recommendMove, sessionDoneInWeek }
+  from '../lib/schedule.js';
 import { exportReminder } from '../lib/archive.js';
-import { checkinFields, checkinSummary } from './checkin.js';
+import { monthReviewDue } from '../lib/review.js';
+import { totalSets } from '../lib/volume.js';
+import { movingAverage, series, WEIGHT_WINDOW } from '../lib/aggregate.js';
+import { checkinSummary, openCheckin } from './checkin.js';
+import { openSession } from './session.js';
+import { openSheet, closeSheet } from './sheet.js';
+import { readinessArc, factorBars } from './gauge.js';
 import {
-  el, replace, int, dec, stat, card, dayWord,
-  decimalInput, parseDecimal, toInputValue,
+  el, replace, dec, setWord, decimalInput, parseDecimal, toInputValue,
 } from './dom.js';
-
-const LEVEL_WORD = {
-  heavy: 'Schwere Sätze frei',
-  light: 'Nur Prophylaxe',
-  none: 'Beine gesperrt',
-};
 
 /* ─── Wochenband ─────────────────────────────────────────────────────────── */
 
-/* Kreide-Haarlinien wie Spielfeldmarkierungen, der Spieltag mit dem
-   Mittelkreis-Bogen. Es kodiert etwas Wahres: die Woche ist um den Spieltag
-   gebaut, nicht um den Montag. */
-function weekband(state, today) {
-  const p = state.profile;
+/**
+ * Die Woche als Reihe von Knöpfen.
+ *
+ * Jeder Tag ist antippbar und wechselt den gezeigten Tag — Flockes Vorgabe.
+ * Die Marke unter der Zahl sagt, was an dem Tag läuft: Spiel, Mannschaft,
+ * Krafteinheit, erledigt. Farbe UND Form, damit die Marke nicht allein an der
+ * Farbe hängt.
+ */
+function weekband(state, shownKey, navigateDay) {
+  const today = todayKey();
+  const plan = weekPlan(state, shownKey);
+  const byDay = new Map(plan.filter((p) => p.dayKey).map((p) => [p.dayKey, p]));
 
   return el('div', null,
     el('div', { class: 'weekband' },
-      weekKeys(today).map((key) => {
+      weekKeys(shownKey).map((key) => {
         const weekday = weekdayOf(key);
         const day = getDay(state, key);
+        const isShown = key === shownKey;
         const isToday = key === today;
+        const entry = byDay.get(key);
+        const hasSets = totalSets(day.sessions) > 0;
 
         let markClass = null;
-        if (weekday === p.matchDayWeekday) markClass = 'match';
-        else if ((p.teamTrainingWeekdays ?? []).includes(weekday)) markClass = 'team';
-        else if ((p.gymWeekdays ?? []).includes(weekday)) {
-          markClass = day.sessions.length > 0 ? 'done' : 'gym';
+        let markText = '';
+        if (weekday === state.profile.matchDayWeekday) { markClass = 'match'; markText = 'Spiel'; }
+        else if ((state.profile.teamTrainingWeekdays ?? []).includes(weekday)) {
+          markClass = 'team'; markText = 'Mannschaft';
+        } else if (entry) {
+          markClass = hasSets ? 'done' : 'gym';
+          markText = hasSets ? `${entry.session.name} erledigt` : entry.session.name;
         }
 
-        return el('div', {
-          class: `weekband__day${isToday ? ' weekband__day--today' : ''}`,
-          'aria-current': isToday ? 'date' : null,
+        return el('button', {
+          type: 'button',
+          class: 'weekband__day'
+            + (isShown ? ' weekband__day--shown' : '')
+            + (isToday ? ' weekband__day--today' : ''),
+          'aria-current': isShown ? 'date' : null,
+          'aria-label': `${WEEKDAYS_LONG[weekday]} ${formatDayShort(key)}`
+            + (markText ? `, ${markText}` : '')
+            + (isToday ? ', heute' : ''),
+          onclick: () => navigateDay(key),
         },
           el('span', { class: 'weekband__label', text: weekdayShort(key) }),
           el('span', { class: 'weekband__num', text: String(parseKey(key).getDate()) }),
@@ -63,159 +100,276 @@ function weekband(state, today) {
           }));
       })),
     el('div', { class: 'weekband__legend' },
-      el('span', { text: '⌒ Spiel' }),
-      el('span', { text: '≡ Mannschaft' }),
-      el('span', { text: '○ Gym geplant' }),
-      el('span', { text: '● erledigt' })));
+      el('span', { class: 'legend legend--match', text: 'Spiel' }),
+      el('span', { class: 'legend legend--team', text: 'Mannschaft' }),
+      el('span', { class: 'legend legend--gym', text: 'Gym geplant' }),
+      el('span', { class: 'legend legend--done', text: 'erledigt' })));
 }
 
-/* ─── Bereitschaft ───────────────────────────────────────────────────────── */
+/* ─── Kopf: welcher Tag ist gezeigt ──────────────────────────────────────── */
 
-function readinessHero(readiness, guidance) {
-  const hasScore = readiness.score !== null;
-  const level = hasScore ? readiness.level : 'none';
+function dayHeader(shownKey, navigateDay) {
+  const today = todayKey();
+  const isToday = shownKey === today;
+  const start = weekStartKey(today);
 
-  /* Die Chips sagen, was konkret anders läuft als geplant. An einem Ruhetag
-     ist eine Satzangabe sinnlos — dort steht, was stattdessen zu tun ist. */
-  const adjustments = [];
-  if (hasScore) {
-    if (readiness.level === 'rest') {
-      adjustments.push('Nur Prophylaxe und Mobilität');
-    } else if (guidance.setsDelta !== 0) {
-      const n = Math.abs(guidance.setsDelta);
-      adjustments.push(`${n} Satz${n === 1 ? '' : 'e'} weniger pro Übung`);
-    } else {
-      adjustments.push('Progression versuchen');
+  return el('div', { class: 'dayhead' },
+    el('button', {
+      type: 'button', class: 'dayhead__step', 'aria-label': 'Tag zurück',
+      text: '‹',
+      // Nur innerhalb der laufenden Woche. Weiter zurück ist Archivarbeit und
+      // würde hier stillschweigend auf heute zurückfallen.
+      disabled: shownKey <= start,
+      onclick: () => navigateDay(addDays(shownKey, -1)),
+    }),
+    el('div', { class: 'dayhead__center' },
+      el('h1', { text: formatDayLong(shownKey) }),
+      isToday
+        ? el('span', { class: 'chip chip--good', text: 'heute' })
+        : el('button', {
+          type: 'button', class: 'btn btn--small btn--ghost',
+          text: 'zurück zu heute', onclick: () => navigateDay(today),
+        })),
+    el('button', {
+      type: 'button', class: 'dayhead__step', 'aria-label': 'Tag vor',
+      text: '›',
+      // Nicht in die Zukunft blättern: dort gibt es nichts einzutragen, und
+      // ein Check-in für Donnerstag wäre geraten, nicht gemessen.
+      disabled: shownKey >= addDays(start, 6),
+      onclick: () => navigateDay(addDays(shownKey, 1)),
+    }));
+}
+
+/* ─── Check-in-Karte ─────────────────────────────────────────────────────── */
+
+/**
+ * Die Karte, die das Check-in-Fenster öffnet.
+ *
+ * Sie zeigt die Statusgrafik, nicht die Fragen. Wer schon ausgefüllt hat, sieht
+ * das Ergebnis; wer nicht, sieht einen leeren Bogen und einen Knopf. Beides in
+ * derselben Karte, damit der Ort gleich bleibt.
+ */
+function checkinCard(store, shownKey) {
+  const readiness = readinessScore(getDay(store.getState(), shownKey).checkin);
+  const d = readiness.display;
+  const open = () => openCheckin(store, shownKey);
+
+  return el('div', { class: `card card--tone card--${d.tone}` },
+    el('div', { class: 'card__head' },
+      el('span', { class: 'eyebrow', text: 'Check-in' }),
+      readiness.isComplete
+        ? el('span', { class: 'chip chip--good', text: 'erledigt' })
+        : el('span', { class: 'chip', text: `${readiness.missing.length} von ${CHECKIN_FIELDS.length} offen` })),
+
+    el('div', { class: 'checkin-card' },
+      readinessArc(readiness),
+      el('div', { class: 'checkin-card__side' },
+        factorBars(readiness),
+        el('button', {
+          type: 'button',
+          class: `btn btn--block${readiness.isComplete ? '' : ' btn--primary'}`,
+          text: readiness.isComplete ? 'Check-in ändern' : 'Check-in öffnen',
+          onclick: open,
+        }))),
+
+    readiness.score === null
+      ? el('p', { class: 'card__note', text: 'Vier Fragen, dreißig Sekunden. Danach weiß die App, wie viel heute geht.' })
+      : el('p', { class: 'card__note', text: checkinSummary(store, shownKey) }));
+}
+
+/* ─── Training heute ─────────────────────────────────────────────────────── */
+
+/** Das Fenster zum Verschieben — mit Empfehlung und Begründung je Tag. */
+function openMoveSheet(store, shownKey, session) {
+  const state = store.getState();
+  const recommendation = recommendMove(state, session.id, shownKey);
+  const targets = moveTargets(state, session.id, shownKey);
+
+  const move = (targetKey) => {
+    /* Zwei Schreibvorgänge: das Ziel bekommt die Einheit, der alte Tag bekommt
+       ausdrücklich "nichts". Ohne das Zweite stünde die Einheit hinterher an
+       beiden Tagen. */
+    store.moveSession(targetKey, session.id);
+    store.moveSession(shownKey, 'none');
+    closeSheet();
+  };
+
+  openSheet({
+    store,
+    eyebrow: 'Verschieben',
+    title: `${session.name} — wann stattdessen?`,
+    doneLabel: 'Abbrechen',
+    body: () => el('div', null,
+      recommendation
+        ? el('div', { class: `card card--tone card--${recommendation.isClean ? 'good' : 'ok'}` },
+          el('div', { class: 'card__head' },
+            el('span', { class: 'eyebrow', text: 'Empfehlung' }),
+            el('span', {
+              class: `chip chip--${recommendation.isClean ? 'good' : 'ok'}`,
+              text: recommendation.label,
+            })),
+          el('p', { class: 'reco__headline', text: recommendation.headline }),
+          el('p', { class: 'card__note', text: recommendation.detail }),
+          el('div', { style: 'height: var(--space-3)' }),
+          el('button', {
+            type: 'button', class: 'btn btn--primary btn--block',
+            text: `Auf ${WEEKDAYS_LONG[recommendation.weekday]} legen`,
+            onclick: () => move(recommendation.dayKey),
+          }))
+        : el('div', { class: 'notice notice--warn' },
+          el('span', { class: 'notice__title', text: 'Kein guter Tag in dieser Woche' }),
+          'Bei diesem Spielrhythmus bleibt kein Tag übrig, der die Einheit '
+          + 'tragen kann, ohne etwas anderes kaputt zu machen. Ehrlichste '
+          + 'Antwort: diese Woche ausfallen lassen.'),
+
+      el('h3', { text: 'Alle Tage der Woche' }),
+      el('div', { class: 'movelist' },
+        targets.map((t) => el('div', {
+          class: `movelist__row${t.possible ? '' : ' movelist__row--blocked'}`,
+        },
+          el('div', null,
+            el('span', { class: 'movelist__day', text: t.label }),
+            el('p', { class: 'movelist__why', text: t.reason })),
+          t.possible
+            ? el('button', {
+              type: 'button', class: 'btn btn--small',
+              text: 'hierhin', onclick: () => move(t.dayKey),
+            })
+            : el('span', { class: 'chip chip--bad', text: 'gesperrt' })))),
+
+      el('p', { class: 'field__hint' },
+        'Die Verschiebung gilt nur für diese Woche. Der Plan bleibt, wie er ist.')),
+  });
+}
+
+/**
+ * Was heute ansteht — und der Knopf, der das Training startet.
+ *
+ * Die Karte beantwortet genau eine Frage und beantwortet sie in der
+ * Überschrift. Alles Weitere (Übungsliste, Sätze) steckt im Fenster, das der
+ * Knopf öffnet.
+ */
+function trainingCard(store, state, shownKey) {
+  const session = sessionForDay(state, shownKey);
+  const dayType = dayTypeFor(state, shownKey);
+  const isToday = shownKey === todayKey();
+
+  /* Kein Gym-Tag: dann steht hier, was stattdessen los ist, plus der nächste
+     Termin. Eine leere Karte wäre schlechter als keine. */
+  if (!session) {
+    const plan = weekPlan(state, shownKey);
+    const upcoming = plan
+      .filter((entry) => entry.dayKey && entry.dayKey > shownKey)
+      .sort((a, b) => a.dayKey.localeCompare(b.dayKey))[0];
+
+    /* Der Tag kann leer sein, WEIL von hier etwas weggeschoben wurde. Dann ist
+       „steht keine Einheit im Plan" die falsche Auskunft — und ohne den
+       Rückweg wäre die Verschiebung nicht mehr rückholbar. */
+    const movedAway = plan.find((entry) => entry.isMoved && entry.plannedDayKey === shownKey);
+    if (movedAway) {
+      return el('div', { class: 'card card--tone card--ok' },
+        el('div', { class: 'card__head' },
+          el('span', { class: 'eyebrow', text: 'Verschoben' }),
+          el('span', { class: 'chip chip--ok', text: formatDayShort(movedAway.dayKey) })),
+        el('p', { class: 'today__headline', text: `${movedAway.session.name} liegt diese Woche am ${WEEKDAYS_LONG[weekdayOf(movedAway.dayKey)]}` }),
+        el('p', { class: 'today__focus', text: 'Hier ist deshalb nichts eingeplant.' }),
+        el('div', { style: 'height: var(--space-3)' }),
+        el('button', {
+          type: 'button', class: 'btn btn--block btn--ghost',
+          text: 'Verschiebung zurücknehmen',
+          onclick: () => {
+            // Beide Einträge weg: das Ziel und das „hier nichts" von hier.
+            store.moveSession(movedAway.dayKey, null);
+            store.moveSession(shownKey, null);
+          },
+        }));
     }
-    if (guidance.rpeCap !== null) {
-      adjustments.push(`RPE höchstens ${guidance.rpeCap}`);
-    }
-    if (!readiness.isComplete) {
-      const n = readiness.missing.length;
-      adjustments.push(`${n} Feld${n === 1 ? '' : 'er'} offen`);
-    }
+
+    const messages = {
+      match: 'Spieltag. Heute gehört alles dem Spiel.',
+      team: 'Mannschaftstraining. Das ist dein Training für heute.',
+      rest: 'Kein Gym heute — Ruhetag.',
+      gym: 'Für diesen Tag steht keine Einheit im Plan.',
+    };
+
+    return el('div', { class: 'card card--tone card--idle' },
+      el('div', { class: 'card__head' },
+        el('span', { class: 'eyebrow', text: 'Training' }),
+        el('span', { class: `chip chip--daytype chip--${dayType}`, text: DAY_TYPE_LABELS[dayType] })),
+      el('p', { class: 'today__headline', text: messages[dayType] }),
+      upcoming
+        ? el('p', { class: 'card__note' },
+          `Als Nächstes: ${upcoming.session.name} am `
+          + `${WEEKDAYS_LONG[weekdayOf(upcoming.dayKey)]}.`)
+        : null);
   }
 
-  return el('div', { class: `hero hero--${level}` },
+  const logged = getSession(state, shownKey, session.id);
+  const done = totalSets(logged ? [logged] : []);
+  const running = Boolean(logged?.startedAt && !logged.endedAt);
+  const finished = Boolean(logged?.endedAt);
+  const minutes = sessionMinutes(logged ?? {}, Date.now());
+  const doneElsewhere = sessionDoneInWeek(state, shownKey, session.id);
+  const movedHere = state.schedule?.[shownKey] === session.id;
+
+  const tone = finished || done > 0 ? 'good' : running ? 'ok' : 'idle';
+
+  return el('div', { class: `card card--tone card--${tone}` },
     el('div', { class: 'card__head' },
-      el('span', { class: 'eyebrow', text: 'Bereitschaft' })),
-    el('div', { class: 'hero__top' },
-      el('span', { class: 'hero__score' },
-        hasScore ? String(Math.round(readiness.score)) : '–',
-        hasScore ? el('span', { class: 'hero__of', text: 'von 100' }) : null)),
-    el('div', { class: 'hero__headline', text: guidance.headline }),
-    el('p', { class: 'hero__detail', text: guidance.detail }),
-    adjustments.length
-      ? el('div', { class: 'hero__adjust' },
-        adjustments.map((a) => el('span', { class: 'chip', text: a })))
-      : null);
-}
+      el('span', { class: 'eyebrow', text: isToday ? 'Heute steht an' : 'An diesem Tag' }),
+      el('span', { class: 'chip', text: `${session.blocks.reduce((n, b) => n + b.exercises.length, 0)} Übungen` })),
 
-function checkinSection(store, today, readiness) {
-  // Solange etwas fehlt, steht das Formular offen — es ist die wichtigste
-  // Handlung des Tages. Ist alles ausgefüllt, klappt es weg.
-  if (!readiness.isComplete) {
-    return card('Check-in',
-      el('span', { class: 'eyebrow', text: 'jeden Morgen' }),
-      checkinFields(store, today));
-  }
+    el('p', { class: 'today__headline', text: session.name }),
+    el('p', { class: 'today__focus', text: session.focus }),
 
-  return el('details', { class: 'reveal' },
-    el('summary', null,
-      el('span', { text: `Check-in: ${checkinSummary(store, today)}` })),
-    el('div', { class: 'reveal__body' }, checkinFields(store, today)));
-}
-
-/* ─── Beine ──────────────────────────────────────────────────────────────── */
-
-function allowanceCard(state, today, allowance, guidance) {
-  const level = guidance.legLevel;
-
-  return el('div', { class: `card allowance allowance--${level}` },
-    el('div', { class: 'card__head' },
-      el('span', { class: 'eyebrow', text: 'Beine heute' }),
-      el('span', { class: 'chip', text: DAY_TYPE_LABELS[dayTypeFor(state, today)] })),
-    el('div', { class: 'allowance__level', text: LEVEL_WORD[level] }),
-    el('p', { class: 'allowance__reason', text: guidance.legReason }),
-    // Wenn die Bereitschaft die Stufe gesenkt hat, soll auch die
-    // Spielrhythmus-Begründung sichtbar bleiben — sonst wirkt die Sperre
-    // willkürlich.
-    guidance.limitedBy === 'Bereitschaft' && allowance.level !== level
-      ? el('p', { class: 'allowance__reason', text: `Rhythmus erlaubt heute: ${LEVEL_WORD[allowance.level].toLowerCase()}.` })
+    movedHere
+      ? el('p', { class: 'card__note', text: 'Verschoben auf diesen Tag.' })
       : null,
-    el('div', { class: 'allowance__meta' },
-      el('span', null,
-        el('b', { text: String(allowance.daysUntilMatch) }),
-        ` ${dayWord(allowance.daysUntilMatch)} bis zum Spiel`),
-      el('span', null,
-        el('b', { text: String(allowance.daysSinceMatch) }),
-        ` ${dayWord(allowance.daysSinceMatch)} danach`)));
-}
 
-/* ─── Ernährung ──────────────────────────────────────────────────────────── */
+    done > 0
+      ? el('div', { class: 'today__stats' },
+        el('span', null, el('b', { text: String(done) }), ` ${setWord(done)} geloggt`),
+        minutes !== null ? el('span', null, el('b', { text: String(Math.round(minutes)) }), ' Minuten') : null)
+      : null,
 
-function macroRow(name, grams, kcalPerG, totalKcal) {
-  const share = totalKcal > 0 ? (grams * kcalPerG) / totalKcal : 0;
-  return el('div', { class: 'macro' },
-    el('div', { class: 'macro__head' },
-      el('span', { class: 'macro__name', text: name }),
-      el('span', { class: 'macro__value' }, int(grams), ' g')),
-    el('div', {
-      class: 'macro__track',
-      role: 'img',
-      'aria-label': `${name}: ${int(grams)} g, ${Math.round(share * 100)} Prozent der Kalorien`,
-    },
-      el('div', { class: 'macro__fill', style: `width: ${(share * 100).toFixed(1)}%` })));
-}
+    el('div', { style: 'height: var(--space-3)' }),
+    el('button', {
+      type: 'button',
+      class: `btn btn--block${done > 0 ? '' : ' btn--primary'}`,
+      text: running ? 'Training weiterführen'
+        : done > 0 ? 'Einheit ansehen'
+          : 'Training starten',
+      onclick: () => openSession(store, shownKey, session),
+    }),
+    el('div', { style: 'height: var(--space-2)' }),
+    el('button', {
+      type: 'button', class: 'btn btn--block btn--ghost',
+      text: 'Kann heute nicht — verschieben',
+      onclick: () => openMoveSheet(store, shownKey, session),
+    }),
 
-function targetsCard(state, today) {
-  const p = state.profile;
-  const weightKg = weightOn(state, today);
-  const dayType = dayTypeFor(state, today);
-
-  let t;
-  try {
-    t = dayTargets({
-      sex: p.sex,
-      weightKg,
-      heightCm: p.heightCm,
-      age: ageOn(p.birthYear, today),
-      dayType,
-      factors: p.activityFactors,
-      proteinPerKg: p.proteinPerKg,
-      fatPerKg: p.fatPerKg,
-      kcalOffset: p.kcalOffset,
-    });
-  } catch (err) {
-    return el('div', { class: 'notice notice--error' },
-      el('span', { class: 'notice__title', text: 'Ziele nicht berechenbar' }),
-      err.message);
-  }
-
-  return card('Ziel heute',
-    el('span', { class: 'chip', text: `Faktor ${dec(t.factor, 2)}` }),
-    el('div', { class: 'stat-grid' },
-      stat('Kalorien', int(t.kcal), 'kcal'),
-      stat('Gewicht', dec(weightKg, 1), 'kg')),
-    el('hr'),
-    macroRow('Protein', t.proteinG, KCAL_PER_G.protein, t.kcal),
-    macroRow('Kohlenhydrate', t.carbsG, KCAL_PER_G.carb, t.kcal),
-    macroRow('Fett', t.fatG, KCAL_PER_G.fat, t.kcal),
-    el('p', { class: 'card__note' },
-      `Ruheumsatz ${int(t.bmr)} kcal nach Mifflin-St Jeor, mal Faktor `,
-      `${dec(t.factor, 2)} für ${DAY_TYPE_LABELS[dayType]}. Protein und Fett `,
-      'hängen nur am Körpergewicht — die Kohlenhydrate tragen die ganze ',
-      'Periodisierung.'));
+    doneElsewhere && doneElsewhere !== shownKey
+      ? el('p', { class: 'card__note' },
+        `Diese Einheit ist in dieser Woche schon am ${formatDayShort(doneElsewhere)} `
+        + 'geloggt worden.')
+      : null);
 }
 
 /* ─── Gewicht ────────────────────────────────────────────────────────────── */
 
-function weightCard(state, today, store) {
-  const day = getDay(state, today);
+/**
+ * Gewichtskarte mit Wochenstreifen.
+ *
+ * Der Streifen ist Flockes Vorgabe: jeden Tag dokumentiert, eine Woche im Blick.
+ * Der lange Verlauf steht im Reiter Essen — hier geht es nur um "hab ich heute
+ * gewogen".
+ */
+function weightCard(state, shownKey, store) {
+  const day = getDay(state, shownKey);
   const slot = el('div');
   const input = decimalInput({
     id: 'weightToday',
-    placeholder: dec(weightOn(state, today), 1),
+    placeholder: dec(weightOn(state, shownKey), 1),
     value: toInputValue(day.weightKg),
   });
 
@@ -227,28 +381,144 @@ function weightCard(state, today, store) {
       return;
     }
     try {
-      store.setDay(today, { weightKg: num });
+      store.setDay(shownKey, { weightKg: num });
     } catch (err) {
       replace(slot, el('p', { class: 'field__hint', text: err.message }));
     }
   }
 
-  return card('Gewicht heute',
-    day.weightKg !== null ? el('span', { class: 'chip', text: 'eingetragen' }) : null,
-    el('div', { class: 'field__row' },
+  const keys = weekKeys(shownKey);
+  const raw = series(state, keys, (d) => d.weightKg);
+  const measured = raw.filter((v) => typeof v === 'number').length;
+  const missing = day.weightKg === null;
+
+  /* Der gleitende Schnitt läuft über die sieben Tage BIS zum gezeigten Tag,
+     nicht über die Kalenderwoche: sonst wäre der Wert am Montag ein Mittel aus
+     Tagen, die noch nicht stattgefunden haben. */
+  const trailing = Array.from({ length: WEIGHT_WINDOW }, (_, i) =>
+    addDays(shownKey, i - WEIGHT_WINDOW + 1));
+  const trailingAvg = movingAverage(
+    series(state, trailing, (d) => d.weightKg), WEIGHT_WINDOW
+  )[WEIGHT_WINDOW - 1];
+
+  const known = raw.filter((v) => typeof v === 'number');
+  const lo = known.length ? Math.min(...known) : 0;
+  const hi = known.length ? Math.max(...known) : 1;
+  const span = hi - lo || 1;
+
+  /* „heute noch nicht" stimmt nur, wenn der gezeigte Tag heute ist. Nach dem
+     Blättern auf Donnerstag wäre es eine falsche Auskunft. */
+  const isToday = shownKey === todayKey();
+
+  return el('div', { class: `card card--tone card--${missing ? 'ok' : 'good'}` },
+    el('div', { class: 'card__head' },
+      el('span', { class: 'eyebrow', text: 'Gewicht' }),
+      missing
+        ? el('span', {
+          class: 'chip chip--ok',
+          text: isToday ? 'heute noch nicht' : 'nichts eingetragen',
+        })
+        : el('span', { class: 'chip chip--good', text: 'eingetragen' })),
+
+    missing
+      ? el('p', {
+        class: 'today__headline today__headline--sm',
+        text: isToday ? 'Kurz auf die Waage' : 'Kein Wert an diesem Tag',
+      })
+      : el('p', { class: 'today__weight' },
+        dec(day.weightKg, 1), el('span', { class: 'today__unit', text: 'kg' })),
+
+    /* Feld und Knopf sitzen auf einer Grundlinie. Ein Blindlabel über dem Knopf
+       wäre der schnellere Weg und würde die beiden um eine Zeile versetzen. */
+    el('div', { class: 'field__row field__row--bottom' },
       el('div', null,
         el('label', { for: 'weightToday', text: 'Kilogramm' }),
         input),
-      el('div', null,
-        el('label', { text: ' ' }),
-        el('button', {
-          type: 'button', class: 'btn btn--block', text: 'Speichern', onclick: save,
-        }))),
+      el('button', {
+        type: 'button', class: 'btn btn--primary btn--block', text: 'Speichern', onclick: save,
+      })),
     slot,
-    el('p', { class: 'field__hint' },
-      'Am besten morgens nach dem Aufstehen. Einzelne Tage schwanken um ',
-      'ein Kilo und mehr — bewertet wird später nur der 7-Tage-Schnitt.'));
+
+    /* Der Wochenstreifen: sieben Säulen, die fehlenden als Umriss. Ein
+       fehlender Tag muss sichtbar sein — sonst merkt man nicht, dass man
+       dreimal nicht gewogen hat. */
+    el('div', { class: 'weightstrip' },
+      keys.map((key, i) => {
+        const value = raw[i];
+        const has = typeof value === 'number';
+        const height = has ? 20 + ((value - lo) / span) * 60 : 0;
+        return el('div', {
+          class: `weightstrip__col${key === shownKey ? ' weightstrip__col--shown' : ''}`,
+          title: has ? `${formatDayShort(key)}: ${dec(value, 1)} kg` : `${formatDayShort(key)}: nichts`,
+        },
+          el('div', { class: 'weightstrip__bar-wrap' },
+            has
+              ? el('div', { class: 'weightstrip__bar', style: `height: ${height.toFixed(0)}%` })
+              : el('div', { class: 'weightstrip__gap' })),
+          el('span', { class: 'weightstrip__day', text: weekdayShort(key) }));
+      })),
+
+    el('div', { class: 'today__stats' },
+      el('span', null, el('b', { text: `${measured}/7` }), ' Tage gewogen'),
+      typeof trailingAvg === 'number'
+        ? el('span', null, el('b', { text: dec(trailingAvg, 1) }), ' kg Ø 7 Tage')
+        : null),
+
+    el('p', { class: 'card__note' },
+      'Am besten morgens nach dem Aufstehen. Einzelne Tage schwanken um ein ',
+      'Kilo und mehr — bewertet wird nur der 7-Tage-Schnitt.'));
 }
+
+/* ─── Monats-Review ──────────────────────────────────────────────────────── */
+
+/**
+ * Die Aufforderung zum Monats-Review.
+ *
+ * Sie steht ganz oben und nur dann, wenn sie fällig ist — am letzten Tag des
+ * Monats und danach, solange das Review fehlt. Warum überhaupt hier und nicht
+ * im Reiter Review: an einen Termin, den man selbst suchen muss, denkt niemand
+ * am 31. abends. Die Regel dahinter liegt in js/lib/review.js.
+ */
+function monthReviewCard(state, today) {
+  const due = monthReviewDue(state, today);
+  if (!due.due) return null;
+
+  return el('div', { class: `card card--tone card--${due.kind === 'today' ? 'ok' : 'bad'}` },
+    el('div', { class: 'card__head' },
+      el('span', { class: 'eyebrow', text: 'Monats-Review' }),
+      el('span', {
+        class: `chip chip--${due.kind === 'today' ? 'ok' : 'bad'}`,
+        text: due.kind === 'today' ? 'heute fällig' : 'überfällig',
+      })),
+    el('p', { class: 'today__headline', text: formatMonth(due.month) }),
+    el('p', { class: 'today__focus', text: due.text }),
+    el('div', { style: 'height: var(--space-3)' }),
+    el('button', {
+      type: 'button', class: 'btn btn--primary btn--block',
+      text: 'Review öffnen — zehn Fragen',
+      onclick: () => {
+        /* Direkt in den Monat des fälligen Reviews springen, nicht bloß in den
+           Reiter: der Offset rechnet vom laufenden Monat zurück. */
+        const [y, m] = due.month.split('-').map(Number);
+        const [ty, tm] = today.split('-').map(Number);
+        location.hash = `#/review?mode=month&offset=${(y - ty) * 12 + (m - tm)}`;
+      },
+    }));
+}
+
+/* ─── Entfallen: Beine und Tagesziel ─────────────────────────────────────────
+
+   Hier standen zwei Karten, die jetzt weg sind:
+
+   „Beine heute" hat die Spieltags-Regel erklärt, ohne dass man etwas damit tun
+   konnte. Die Regel gilt unverändert — sie greift im Trainingsfenster an der
+   einzelnen Übung, und dort steht auch die Begründung. Das ist die Stelle, an
+   der sie eine Handlung ändert.
+
+   „Ziel an diesem Tag" mit Kalorien und Makros ist in den Reiter Essen
+   gewandert. Morgens beantwortet die Zahl keine Frage; abends beim Eintragen
+   des Wochenschnitts schon.
+   ───────────────────────────────────────────────────────────────────────────── */
 
 /* ─── Zusammenbau ────────────────────────────────────────────────────────── */
 
@@ -258,36 +528,49 @@ function backupReminder(state, today, navigate) {
   const reminder = exportReminder(state, today);
   if (!reminder.due) return null;
 
-  return el('div', { class: 'notice notice--warn' },
+  return el('div', { class: 'notice notice--error' },
     el('span', { class: 'notice__title', text: 'Sicherung überfällig' }),
     `${reminder.text} iOS löscht den Speicher von Web-Apps, die längere Zeit `,
     'nicht geöffnet werden — dann wäre alles weg.',
     el('div', { style: 'height: var(--space-3)' }),
     el('button', {
-      type: 'button', class: 'btn btn--small', text: 'Jetzt sichern',
+      type: 'button', class: 'btn btn--small',
+      text: 'Jetzt sichern',
       onclick: () => navigate('archiv'),
     }));
 }
 
+/** Welcher Tag wird gezeigt? Aus der Route, mit heute als Rückfall. */
+export function shownDayKey() {
+  const query = location.hash.split('?')[1] ?? '';
+  const wanted = new URLSearchParams(query).get('day');
+  const today = todayKey();
+  if (!wanted) return today;
+  try {
+    parseKey(wanted);
+  } catch {
+    return today;
+  }
+  // Nur innerhalb der laufenden Woche — weiter zurück ist Archivarbeit.
+  const week = weekKeys(today);
+  return week.includes(wanted) ? wanted : today;
+}
+
 export function render({ store, navigate }) {
   const state = store.getState();
+  const shownKey = shownDayKey();
   const today = todayKey();
 
-  const allowance = legVolumeAllowance(today, {
-    matchDayWeekday: state.profile.matchDayWeekday,
-    teamTrainingWeekdays: state.profile.teamTrainingWeekdays ?? [],
-  });
-  const readiness = readinessScore(getDay(state, today).checkin);
-  const guidance = trainingGuidance(readiness, allowance);
+  const navigateDay = (key) => {
+    location.hash = key === today ? '#/heute' : `#/heute?day=${key}`;
+  };
 
   return el('div', { class: 'view' },
-    weekband(state, today),
-    el('h1', { text: formatDayLong(today) }),
-    el('div', { style: 'height: var(--space-4)' }),
+    weekband(state, shownKey, navigateDay),
+    dayHeader(shownKey, navigateDay),
     backupReminder(state, today, navigate),
-    readinessHero(readiness, guidance),
-    checkinSection(store, today, readiness),
-    allowanceCard(state, today, allowance, guidance),
-    targetsCard(state, today),
-    weightCard(state, today, store));
+    monthReviewCard(state, today),
+    checkinCard(store, shownKey),
+    trainingCard(store, state, shownKey),
+    weightCard(state, shownKey, store));
 }

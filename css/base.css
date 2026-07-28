@@ -216,6 +216,33 @@ textarea {
   line-height: var(--leading-normal);
 }
 
+/* Dateiauswahl (Sicherung zurückspielen).
+ *
+ * Sie stand nicht in der Regel oben, und das war auf 375 px ein sichtbarer
+ * Fehler: das Feld zieht seine Mindestbreite aus dem Inhalt — Knopf plus
+ * Dateiname — und schob den Archiv-Screen 35 px über den Bildrand hinaus.
+ * `width: 100%` allein reicht dagegen nicht, `max-width` muss dazu. */
+input[type='file'] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+input[type='file']::file-selector-button {
+  min-height: 44px;
+  margin-right: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-raised);
+  color: var(--ink);
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
 button {
   min-height: var(--tap-min);
   border: 0;

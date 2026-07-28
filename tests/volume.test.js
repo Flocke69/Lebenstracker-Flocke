@@ -1,8 +1,9 @@
 import { suite, test, eq, close, deepEq, isTrue, throws } from './harness.js';
 import { MUSCLE_GROUPS, EXERCISES, SECONDARY_SHARE, exercise, exerciseLabel }
   from '../data/exercises.js';
-import { SESSIONS, PLAN, sessionForWeekday, sessionExercises, sessionById }
-  from '../data/plan-default.js';
+import {
+  SESSIONS, PLAN, sessionForWeekday, sessionExercises, sessionById, plannedSets,
+} from '../data/plan-default.js';
 import {
   emptyVolume,
   setsPerMuscle,
@@ -37,22 +38,35 @@ suite('Katalog — innere Stimmigkeit', () => {
 
   test('Beinübungen sind als solche markiert, Oberkörperübungen nicht', () => {
     // Diese Markierung steuert, was an gesperrten Tagen ausgeblendet wird.
-    for (const id of ['rdl', 'split_squat_bulgarian', 'leg_curl_eccentric',
-                      'copenhagen_plank', 'calf_raise']) {
+    for (const id of ['rdl_db', 'split_squat_bulgarian', 'leg_extension',
+                      'adductor_machine']) {
       isTrue(EXERCISES[id].loadsLegs, `${id} muss als Beinübung gelten`);
     }
-    for (const id of ['ohp_db', 'lat_pulldown', 'curl_db', 'lateral_raise']) {
+    for (const id of ['ohp_db', 'lat_pulldown', 'curl_cable', 'lateral_raise_machine',
+                      'row_bb']) {
       isTrue(!EXERCISES[id].loadsLegs, `${id} darf keine Beinübung sein`);
     }
   });
 
   test('unbekannte Kennung wirft statt undefined zu liefern', () => {
     throws(() => exercise('kniebeuge_gibts_nicht'));
-    eq(exerciseLabel('rdl'), 'Rumänisches Kreuzheben (Langhantel)');
+    eq(exerciseLabel('rdl_db'), 'Rumänisches Kreuzheben (Kurzhantel)');
+  });
+
+  test('AUS DEM PLAN GEFALLENE ÜBUNGEN BLEIBEN IM KATALOG', () => {
+    /* Sonst würde exercise() bei alten geloggten Sätzen werfen und ein Monat
+       Trainingsdaten wäre nicht mehr auswertbar. Diese Übungen stehen nicht
+       mehr im Plan — auflösbar müssen sie trotzdem bleiben. */
+    for (const id of ['rdl', 'row_db', 'curl_db', 'curl_hammer', 'lateral_raise',
+                      'chest_fly_cable', 'incline_press_db', 'pullup_negative',
+                      'triceps_overhead', 'leg_curl_eccentric', 'leg_curl_slider',
+                      'copenhagen_plank', 'calf_raise', 'pallof_press']) {
+      exercise(id); // wirft, wenn gelöscht
+    }
   });
 });
 
-suite('Plan — Stimmigkeit gegen den Katalog', () => {
+suite('Plan — Flockes Vorgabe, wörtlich', () => {
   test('jede Übung im Plan steht im Katalog', () => {
     for (const session of SESSIONS) {
       for (const entry of sessionExercises(session)) {
@@ -75,12 +89,57 @@ suite('Plan — Stimmigkeit gegen den Katalog', () => {
   test('die drei Einheiten liegen auf Montag, Dienstag und Donnerstag', () => {
     deepEq(SESSIONS.map((s) => s.weekday), [1, 2, 4]);
     eq(sessionForWeekday(1).id, 'a-push');
-    eq(sessionForWeekday(4).id, 'c-legs-shoulders');
+    eq(sessionForWeekday(2).id, 'b-pull');
+    eq(sessionForWeekday(4).id, 'c-legs');
     eq(sessionForWeekday(3), null, 'Mittwoch ist Mannschaftstraining');
     eq(sessionForWeekday(0), null, 'Sonntag ist Spieltag');
   });
 
-  test('BEINÜBUNGEN STEHEN AUSSCHLIESSLICH IM DONNERSTAGS-PLAN', () => {
+  test('PUSH steht genau so, wie Flocke ihn vorgegeben hat', () => {
+    const push = sessionExercises(sessionById('a-push'));
+    deepEq(push.map((e) => e.id), [
+      'curl_incline_db',        // Bizepsschrägbankcurls 3× 8–12
+      'bench_press_db',         // Bankdrücken KH        3× 4–8
+      'chest_fly_db',           // Fliegende KH          2× 6–10
+      'incline_press_multi',    // Schrägbank Multi      2× 4–8
+      'ohp_db',                 // Schulterdrücken KH    2× 6–8
+      'lateral_raise_machine',  // Seitheben Maschine    3× 6–10
+    ]);
+    deepEq(push.map((e) => [e.sets, e.repsMin, e.repsMax]), [
+      [3, 8, 12], [3, 4, 8], [2, 6, 10], [2, 4, 8], [2, 6, 8], [3, 6, 10],
+    ]);
+  });
+
+  test('PULL steht genau so, wie Flocke ihn vorgegeben hat', () => {
+    const pull = sessionExercises(sessionById('b-pull'));
+    deepEq(pull.map((e) => e.id), [
+      'triceps_pushdown_single',  // Trizepsdrücken einarmig 3× 8–12
+      'lat_pulldown',             // Latzug breit            3× 6–10
+      'row_wide',                 // Breites Rudern          3× 6–10
+      'row_bb',                   // Rudern LH               2× 6–10
+      'face_pull',                // Face Pulls              2× 8–12
+    ]);
+    deepEq(pull.map((e) => [e.sets, e.repsMin, e.repsMax]), [
+      [3, 8, 12], [3, 6, 10], [3, 6, 10], [2, 6, 10], [2, 8, 12],
+    ]);
+  });
+
+  test('DER BEINTAG steht genau so, wie Flocke ihn vorgegeben hat', () => {
+    const legs = sessionExercises(sessionById('c-legs'));
+    deepEq(legs.map((e) => e.id), [
+      'triceps_pushdown',        // Trizepsdrücken        3× 8–12
+      'curl_cable',              // Bizepscurls Kabel     3× 8–12
+      'rdl_db',                  // RDLs KH               3× 4–8
+      'split_squat_bulgarian',   // Bulgarian Split Squat 3× 6–10
+      'leg_extension',           // Beinstrecker          2× 6–10
+      'adductor_machine',        // Adduktoren            2× 6–10
+    ]);
+    deepEq(legs.map((e) => [e.sets, e.repsMin, e.repsMax]), [
+      [3, 8, 12], [3, 8, 12], [3, 4, 8], [3, 6, 10], [2, 6, 10], [2, 6, 10],
+    ]);
+  });
+
+  test('BEINÜBUNGEN STEHEN AUSSCHLIESSLICH IM BEINTAG', () => {
     // Die zentrale Zusage: Montag und Dienstag fassen die Beine nicht an,
     // Freitag und Samstag gibt es gar kein Training.
     for (const session of SESSIONS) {
@@ -93,31 +152,19 @@ suite('Plan — Stimmigkeit gegen den Katalog', () => {
     }
   });
 
-  test('DAS BEINVOLUMEN BLEIBT UNVERÄNDERT', () => {
-    // Beim Umbau auf Gleichverteilung durfte sich am Beintag nichts ändern:
-    // gleiche Übungen, gleiche Sätze, gleiche Frequenz.
-    const donnerstag = sessionExercises(sessionById('c-legs-shoulders'));
-    const beine = donnerstag.filter((e) => EXERCISES[e.id].loadsLegs);
-    deepEq(beine.map((e) => e.id),
-      ['rdl', 'split_squat_bulgarian', 'leg_curl_eccentric', 'copenhagen_plank', 'calf_raise']);
-    deepEq(beine.map((e) => e.sets), [3, 3, 3, 3, 3]);
-    eq(beine.reduce((n, e) => n + e.sets, 0), 15, '15 Beinsätze, einmal pro Woche');
+  test('die Armübungen stehen vorne — sie fallen sonst als Erstes weg', () => {
+    for (const id of ['a-push', 'b-pull', 'c-legs']) {
+      const first = sessionExercises(sessionById(id))[0];
+      const group = EXERCISES[first.id].primary;
+      isTrue(['biceps', 'triceps'].includes(group),
+        `${id} beginnt mit ${first.id} (${group})`);
+    }
   });
 
-  test('der Donnerstag trägt einen eigenen Prophylaxeblock', () => {
-    const donnerstag = sessionById('c-legs-shoulders');
-    const block = donnerstag.blocks.find((b) => b.prophylaxis);
-    isTrue(Boolean(block), 'Prophylaxeblock fehlt');
-    const ids = block.exercises.map((e) => e.id);
-    isTrue(ids.includes('leg_curl_eccentric'), 'Hamstrings fehlen');
-    isTrue(ids.includes('copenhagen_plank'), 'Adduktoren fehlen');
-    isTrue(ids.includes('calf_raise'), 'Waden fehlen');
-  });
-
-  test('es gibt eine Ersatzübung, wenn die Beincurl-Maschine belegt ist', () => {
-    const entry = sessionExercises(sessionById('c-legs-shoulders'))
-      .find((e) => e.id === 'leg_curl_eccentric');
-    eq(entry.alternative, 'leg_curl_slider');
+  test('plannedSets zählt die Sätze einer Einheit', () => {
+    eq(plannedSets(sessionById('a-push')), 15);
+    eq(plannedSets(sessionById('b-pull')), 13);
+    eq(plannedSets(sessionById('c-legs')), 16);
   });
 
   test('Woche 4 ist Deload', () => {
@@ -134,9 +181,9 @@ suite('volume — Zählweise', () => {
   });
 
   test('eine Hauptgruppe zählt einen ganzen Satz', () => {
-    // 4 Sätze Seitheben — reine Schulterübung ohne Nebengruppen.
+    // 4 Sätze Seitheben an der Maschine — reine Schulterübung ohne Nebengruppen.
     const v = setsPerMuscle([
-      { exercises: [{ exId: 'lateral_raise', sets: Array(4).fill({ reps: 15, kg: 8 }) }] },
+      { exercises: [{ exId: 'lateral_raise_machine', sets: Array(4).fill({ reps: 15, kg: 8 }) }] },
     ]);
     close(v.shoulders, 4);
     close(v.triceps, 0);
@@ -154,18 +201,18 @@ suite('volume — Zählweise', () => {
 
   test('mehrere Übungen und Einheiten werden addiert', () => {
     const v = setsPerMuscle([
-      { exercises: [{ exId: 'lateral_raise', sets: Array(3).fill({ reps: 15, kg: 8 }) }] },
-      { exercises: [{ exId: 'lateral_raise', sets: Array(2).fill({ reps: 15, kg: 8 }) }] },
+      { exercises: [{ exId: 'curl_cable', sets: Array(3).fill({ reps: 10, kg: 15 }) }] },
+      { exercises: [{ exId: 'curl_cable', sets: Array(2).fill({ reps: 10, kg: 15 }) }] },
     ]);
-    close(v.shoulders, 5);
+    close(v.biceps, 5);
   });
 
   test('nur tatsächlich geloggte Sätze zählen', () => {
     // Zwei von vier geplanten Sätzen gemacht: es zählen zwei.
     const v = setsPerMuscle([
-      { exercises: [{ exId: 'lateral_raise', sets: [{ reps: 15, kg: 8 }, { reps: 12, kg: 8 }] }] },
+      { exercises: [{ exId: 'curl_cable', sets: [{ reps: 12, kg: 15 }, { reps: 10, kg: 15 }] }] },
     ]);
-    close(v.shoulders, 2);
+    close(v.biceps, 2);
   });
 
   test('unbekannte Übung wirft', () => {
@@ -186,7 +233,7 @@ suite('volume — Tonnage', () => {
     close(t, 10 * 20 + 8 * 22.5, 0.001);
   });
 
-  test('Sätze ohne Gewicht zählen nicht mit — Copenhagen Plank hat keine Kilo', () => {
+  test('Sätze ohne Gewicht zählen nicht mit', () => {
     const t = tonnage([
       { exercises: [{ exId: 'copenhagen_plank', sets: [{ reps: 30, kg: null }] }] },
     ]);
@@ -197,7 +244,7 @@ suite('volume — Tonnage', () => {
     eq(totalSets([
       { exercises: [
         { exId: 'ohp_db', sets: Array(4).fill({ reps: 8, kg: 20 }) },
-        { exId: 'lateral_raise', sets: Array(3).fill({ reps: 15, kg: 8 }) },
+        { exId: 'lateral_raise_machine', sets: Array(3).fill({ reps: 15, kg: 8 }) },
       ] },
     ]), 7);
   });
@@ -207,26 +254,30 @@ suite('volume — der Plan in Zahlen', () => {
   const planned = plannedSetsPerMuscle(SESSIONS);
 
   test('das geplante Wochenvolumen ist berechenbar', () => {
-    close(planned.hamstrings, 6, 0.001, 'RDL 3 + Beincurl 3');
-    close(planned.quads, 3, 0.001, 'nur Bulgarische Kniebeuge');
-    close(planned.calves, 3, 0.001);
-    close(planned.adductors, 3, 0.001, 'Copenhagen Plank');
+    close(planned.hamstrings, 3, 0.001, 'nur RDL');
+    close(planned.quads, 5, 0.001, 'Bulgarische Kniebeuge 3 + Beinstrecker 2');
+    close(planned.glutes, 3, 0.001, 'je zur Hälfte aus RDL und Bulgarischer');
+    close(planned.adductors, 2, 0.001, 'Adduktorenmaschine');
+    close(planned.calves, 0, 0.001, 'Waden stehen nicht mehr im Plan');
+    eq(SESSIONS.reduce((n, s) => n + plannedSets(s), 0), 44, 'Sätze pro Woche');
   });
 
   test('KEIN SCHWERPUNKT: die großen Oberkörpergruppen liegen dicht beieinander', () => {
-    // Flockes ausdrückliche Vorgabe nach dem ersten Entwurf. Der Test hält
-    // die Balance fest, damit spätere Planänderungen sie nicht unbemerkt
-    // kippen — in die eine oder die andere Richtung.
+    /* Flockes ausdrückliche Vorgabe nach dem ersten Entwurf. Der Test hält die
+       Balance fest, damit spätere Planänderungen sie nicht unbemerkt kippen.
+       Die Untergrenze liegt bei 8 und nicht bei 10, weil dieser Plan von Flocke
+       vorgegeben ist: die Brust kommt mit 8 Sätzen aus, und das ist eine
+       Entscheidung, keine Nachlässigkeit. */
     const gruppen = ['chest', 'back', 'shoulders', 'biceps', 'triceps'];
     const werte = gruppen.map((g) => planned[g]);
     const groesste = Math.max(...werte);
     const kleinste = Math.min(...werte);
 
-    isTrue(kleinste >= 10,
-           `jede Gruppe braucht mindestens 10 Sätze, kleinste war ${kleinste}`);
+    isTrue(kleinste >= 8,
+      `jede Gruppe braucht mindestens 8 Sätze, kleinste war ${kleinste}`);
     isTrue(groesste / kleinste <= 1.35,
-           `Verhältnis ${groesste} zu ${kleinste} = ${(groesste / kleinste).toFixed(2)} — `
-           + `das wäre wieder ein Schwerpunkt`);
+      `Verhältnis ${groesste} zu ${kleinste} = ${(groesste / kleinste).toFixed(2)} — `
+      + 'das wäre wieder ein Schwerpunkt');
   });
 
   test('keine einzelne Oberkörpergruppe nimmt mehr als ein Viertel ein', () => {
@@ -239,9 +290,8 @@ suite('volume — der Plan in Zahlen', () => {
 
   test('der Rücken bekommt mindestens so viel wie die Brust', () => {
     // Viel Drücken ohne Ziehen führt zuverlässig zu Schulterproblemen.
-    // Gleichverteilung heißt nicht, dass die Statik egal wird.
     isTrue(planned.back >= planned.chest,
-           `Rücken ${planned.back} gegen Brust ${planned.chest}`);
+      `Rücken ${planned.back} gegen Brust ${planned.chest}`);
   });
 
   test('das Beinvolumen bleibt bewusst niedrig', () => {
@@ -249,6 +299,6 @@ suite('volume — der Plan in Zahlen', () => {
     const upper = planned.shoulders + planned.chest + planned.back
                 + planned.biceps + planned.triceps;
     isTrue(legs < upper * 0.4,
-           `Beine ${legs} gegen Oberkörper ${upper} — Fußball macht den Rest`);
+      `Beine ${legs} gegen Oberkörper ${upper} — Fußball macht den Rest`);
   });
 });

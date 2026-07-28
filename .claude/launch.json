@@ -4,8 +4,9 @@
     {
       "name": "lebenstracker",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8080"],
-      "port": 8080
+      "runtimeArgs": ["tools/serve.py", "8080"],
+      "port": 8080,
+      "url": "http://127.0.0.1:8080"
     }
   ]
 }

@@ -124,6 +124,22 @@ export function dayWord(n) {
   return n === 1 ? 'Tag' : 'Tage';
 }
 
+/**
+ * '1 Satz' oder '3 Sätze'.
+ *
+ * Als Funktion, weil der Plural im Deutschen nicht durch Anhängen entsteht:
+ * `Satz${n === 1 ? '' : 'e'}` ergab „2 Satze" — der Umlaut fehlt. Dasselbe
+ * Muster hat es an drei Stellen gegeben, deshalb steht es jetzt einmal hier.
+ */
+export function setWord(n) {
+  return n === 1 ? 'Satz' : 'Sätze';
+}
+
+/** '1 Satz' / '3 Sätze' — Zahl und Wort zusammen. */
+export function setCount(n) {
+  return `${n} ${setWord(n)}`;
+}
+
 /** Kennzahl mit Einheit und Beschriftung. */
 export function stat(label, value, unit) {
   return el('div', { class: 'stat' },
@@ -140,4 +156,36 @@ export function card(title, right, ...children) {
       el('span', { class: 'eyebrow', text: title }),
       right ?? null),
     ...children);
+}
+
+/**
+ * Aufklappbarer Abschnitt.
+ *
+ * Damit werden Essen und Trends gegliedert: zugeklappt sieht man Titel und
+ * Urteil, aufgeklappt die Charts. Auf einem Handydisplay ist das der
+ * Unterschied zwischen einem Screen, den man überblickt, und einem, den man
+ * dreimal scrollt.
+ *
+ * `keep` ist eine stabile Kennung. Die App zeichnet ihre Ansicht bei jeder
+ * Änderung komplett neu — js/app.js merkt sich anhand dieser Kennung, welche
+ * Abschnitte offen waren, und öffnet genau die wieder. Ohne `keep` würde ein
+ * Abschnitt bei jeder Eingabe zuklappen.
+ *
+ * @param {object} options { title, keep, chip, tone, open, note }
+ */
+export function panel({ title, keep, chip = null, tone = null, open = false, note = null },
+  ...children) {
+  if (!keep) throw new Error('panel() braucht eine Kennung (keep), sonst klappt es beim Neuzeichnen zu.');
+
+  return el('details', {
+    class: `panel${tone ? ` panel--${tone}` : ''}`,
+    open,
+    dataset: { keep },
+  },
+    el('summary', null,
+      el('span', { class: 'panel__title', text: title }),
+      chip ? el('span', { class: `chip${tone ? ` chip--${tone}` : ''}`, text: chip }) : null),
+    el('div', { class: 'panel__body' },
+      note ? el('p', { class: 'panel__note', text: note }) : null,
+      ...children));
 }

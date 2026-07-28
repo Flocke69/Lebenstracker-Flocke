@@ -8,7 +8,7 @@
  * nachvollziehbar bleibt, warum morgen eine andere Zahl im Ziel steht.
  */
 
-import { WEEKDAYS_SHORT, WEEKDAYS_LONG, todayKey } from '../lib/dates.js';
+import { WEEKDAYS_SHORT, todayKey } from '../lib/dates.js';
 import {
   DAY_TYPES, DAY_TYPE_LABELS, DAY_TYPE_SHORT, DEFAULT_FACTORS, ageOn, dayTargets,
 } from '../lib/energy.js';
@@ -253,8 +253,70 @@ export function render({ store }) {
             `Standard ${dec(DEFAULT_FACTORS[type], 2)}`,
             (n) => patch({ activityFactors: { ...p.activityFactors, [type]: n } }))))),
 
+    /* ─── Neu anfangen ──────────────────────────────────────────────────── */
+    resetCard(store, state),
+
     el('p', { class: 'field__hint' },
       'Alle Daten liegen ausschließlich auf diesem Gerät. Denk an den ',
       'monatlichen Export — ohne ihn kann iOS die App-Daten nach längerer ',
       'Pause löschen.'));
+}
+
+/**
+ * Alles löschen und neu anfangen.
+ *
+ * Gebraucht wird das aus einem sehr konkreten Grund: während der Entwicklung
+ * standen Beispieltage in der App (erkennbar an Übungen, die es im aktuellen
+ * Plan nicht mehr gibt). Wer mit echten Daten anfangen will, braucht einen Weg
+ * dorthin, der nicht über die Entwicklerkonsole führt.
+ *
+ * ZWEI SCHRITTE, UND DER ERSTE IST DIE SICHERUNG. Derselbe Grundsatz wie beim
+ * Monatsabschluss: ohne Exportdatei wird nichts gelöscht. Hier ist er nicht als
+ * Sperre gebaut, sondern als Reihenfolge — der Löschknopf erscheint erst, wenn
+ * man ihn ausdrücklich anfordert, und der Hinweis auf die Sicherung steht
+ * davor.
+ */
+function resetCard(store, state) {
+  const slot = el('div');
+  const dayCount = Object.keys(state.days ?? {}).length;
+  const monthCount = (state.months ?? []).length;
+
+  const arm = () => {
+    replace(slot,
+      el('div', { class: 'notice notice--error' },
+        el('span', { class: 'notice__title', text: 'Das ist nicht rückholbar' }),
+        `${dayCount} ${dayCount === 1 ? 'Tag' : 'Tage'}, ${monthCount} `,
+        `${monthCount === 1 ? 'Monat' : 'Monate'} und alle Reviews werden gelöscht. `,
+        'Wenn du sie noch brauchst: erst im Archiv sichern, dann hierher zurück.'),
+      el('button', {
+        type: 'button', class: 'btn btn--block',
+        text: 'Ja, alles löschen und neu anfangen',
+        onclick: () => {
+          store.clear();
+          location.hash = '#/heute';
+        },
+      }),
+      el('div', { style: 'height: var(--space-2)' }),
+      el('button', {
+        type: 'button', class: 'btn btn--block btn--ghost',
+        text: 'Abbrechen',
+        onclick: () => replace(slot, trigger()),
+      }));
+  };
+
+  const trigger = () => el('button', {
+    type: 'button', class: 'btn btn--block btn--ghost',
+    text: 'Alle Daten löschen', onclick: arm,
+  });
+
+  replace(slot, trigger());
+
+  return card('Neu anfangen',
+    el('span', { class: 'chip', text: `${dayCount} Tage` }),
+    el('p', { class: 'field__hint' },
+      'Setzt die App auf den Stand vor dem ersten Start zurück: Profil, alle ',
+      'Tage, Monate und Reviews. Nur nötig, wenn Beispieldaten in der App ',
+      'stehen — im normalen Betrieb braucht das niemand.'),
+    el('div', { style: 'height: var(--space-3)' }),
+    slot);
 }

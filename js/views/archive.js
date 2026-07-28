@@ -73,11 +73,13 @@ function exportButton(store, { label = 'Monat sichern', primary = true, month = 
         replace(slot, el('p', { class: 'field__hint', text: 'Sicherung abgebrochen.' }));
         return;
       }
-      // Erst nach erfolgreicher Ausgabe stempeln — sonst öffnet ein
-      // abgebrochener Versuch die Sperre.
+      /* Erst nach erfolgreicher Ausgabe stempeln — sonst öffnet ein
+         abgebrochener Versuch die Sperre.
+
+         Danach wird NICHT in den Slot geschrieben: `store.update` zeichnet die
+         Ansicht neu, der Slot wäre im selben Moment weg. Die Bestätigung kommt
+         aus dem Zustand — die Zeile „Heute gesichert" oben im Screen. */
       store.update((s) => withExportStamp(s, stamp));
-      replace(slot,
-        el('p', { class: 'field__hint', text: `Gesichert über ${result.via}: ${exportFilename(mk)}` }));
     } catch (err) {
       replace(slot,
         el('div', { class: 'notice notice--error' },

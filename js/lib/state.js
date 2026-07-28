@@ -19,7 +19,17 @@ import {
 import { DAY_TYPES, DEFAULT_FACTORS, DEFAULT_PROTEIN_PER_KG, DEFAULT_FAT_PER_KG }
   from './energy.js';
 
-export const SCHEMA_VERSION = 1;
+/* Version 2 bringt vier Dinge dazu:
+ *
+ *   state.schedule   verschobene Trainingstage  { 'YYYY-MM-DD': planId | 'none' }
+ *   state.weeks      Yazio-Wochenschnitt        { 'YYYY-MM-DD' (Montag): {…} }
+ *   state.reviews    gespeicherte Monats-Reviews
+ *   sessions[].startedAt / endedAt   Trainingsdauer
+ *
+ * Die Migration von 1 legt die Behälter leer an. Nichts wird umgeschrieben:
+ * ein v1-Zustand ist ein v2-Zustand ohne diese vier Angaben.
+ */
+export const SCHEMA_VERSION = 2;
 
 /** Felder, ohne die die App nicht rechnen kann. */
 export const REQUIRED_PROFILE_FIELDS = Object.freeze([
@@ -83,6 +93,12 @@ export function emptyState(currentMonth) {
     months: [],
     plan: null,
     lastExportAt: null,
+    /** Verschobene Trainingstage: Tagesschlüssel → Plan-Kennung oder 'none'. */
+    schedule: {},
+    /** Yazio-Wochenschnitt: Montagsschlüssel → { kcal, proteinG, carbsG, fatG }. */
+    weeks: {},
+    /** Abgeschlossene Monats-Reviews samt Antworten. */
+    reviews: [],
   };
 }
 
@@ -109,8 +125,11 @@ export function migrate(raw, fallbackMonth) {
     );
   }
 
-  // Künftige Schemaschritte kommen hier hin:
-  //   if (version < 2) { ...raw = upgradeTo2(raw) }
+  /* Schritt 1 → 2: nichts umschreiben, nur die neuen Behälter anlegen. Das
+     passiert unten durch `?? {}` bzw. `?? []` ganz von allein — ein
+     v1-Zustand ist ein v2-Zustand ohne Verschiebungen, Wochenschnitte und
+     Reviews. Deshalb steht hier kein eigener Migrationsschritt.
+     Künftige Schritte, die Daten tatsächlich umformen, kommen hier hin. */
 
   const days = isPlainObject(raw.days) ? raw.days : {};
   return {
@@ -123,6 +142,9 @@ export function migrate(raw, fallbackMonth) {
     months: Array.isArray(raw.months) ? raw.months : [],
     plan: raw.plan ?? null,
     lastExportAt: typeof raw.lastExportAt === 'string' ? raw.lastExportAt : null,
+    schedule: isPlainObject(raw.schedule) ? raw.schedule : {},
+    weeks: isPlainObject(raw.weeks) ? raw.weeks : {},
+    reviews: Array.isArray(raw.reviews) ? raw.reviews : [],
   };
 }
 
@@ -195,9 +217,62 @@ export function withDay(state, key, patch) {
 
 /* ─── Trainingseinheiten ─────────────────────────────────────────────────── */
 
+/** Leere Einheit. `startedAt`/`endedAt` tragen die Trainingsdauer. */
+export function emptySession(planId) {
+  return { planId, exercises: [], sessionRpe: null, startedAt: null, endedAt: null };
+}
+
 /** Geloggte Einheit zu einer Plan-Kennung, oder null. */
 export function getSession(state, dayKey, planId) {
   return getDay(state, dayKey).sessions.find((s) => s.planId === planId) ?? null;
+}
+
+/**
+ * Angaben an einer Einheit ändern, ohne die Sätze anzufassen.
+ *
+ * Wird für Start und Ende des Trainings gebraucht. Die Einheit wird angelegt,
+ * wenn es sie noch nicht gibt — "Training starten" ist der erste Schreibvorgang
+ * des Tages, da existiert noch kein Satz.
+ */
+export function withSessionMeta(state, dayKey, planId, patch) {
+  parseKey(dayKey);
+  if (!isPlainObject(patch)) {
+    throw new TypeError(`Einheiten-Patch muss ein Objekt sein, war: ${patch}`);
+  }
+  for (const field of ['startedAt', 'endedAt']) {
+    const value = patch[field];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== 'string' || Number.isNaN(new Date(value).getTime())) {
+      throw new TypeError(`${field} muss ein gültiger Zeitstempel sein, war: ${value}`);
+    }
+  }
+  if ('sessionRpe' in patch && patch.sessionRpe !== null) {
+    assertNumber(patch.sessionRpe, 'sessionRpe', 1, 10);
+  }
+
+  const day = getDay(state, dayKey);
+  const sessions = [...day.sessions];
+  const index = sessions.findIndex((s) => s.planId === planId);
+
+  if (index === -1) sessions.push({ ...emptySession(planId), ...patch });
+  else sessions[index] = { ...sessions[index], ...patch };
+
+  return withDay(state, dayKey, { sessions });
+}
+
+/**
+ * Trainingsdauer in Minuten, oder null.
+ *
+ * Läuft die Einheit noch, wird gegen `now` gerechnet — deshalb ist die Zeit
+ * hier ein Parameter und kein `Date.now()` im Körper: sonst wäre die Funktion
+ * nicht testbar.
+ */
+export function sessionMinutes(session, now = Date.now()) {
+  const start = session?.startedAt ? new Date(session.startedAt).getTime() : null;
+  if (start === null || Number.isNaN(start)) return null;
+  const end = session.endedAt ? new Date(session.endedAt).getTime() : now;
+  if (Number.isNaN(end)) return null;
+  return Math.max(0, (end - start) / 60000);
 }
 
 /** Die geloggten Sätze einer Übung an einem Tag. Nie undefined. */
@@ -241,7 +316,7 @@ export function withSet(state, dayKey, planId, exId, setIndex, patch) {
 
   let sessionIndex = sessions.findIndex((s) => s.planId === planId);
   if (sessionIndex === -1) {
-    sessions.push({ planId, exercises: [], sessionRpe: null });
+    sessions.push(emptySession(planId));
     sessionIndex = sessions.length - 1;
   }
 
@@ -308,6 +383,85 @@ export function lastPerformance(state, beforeDayKey, exId) {
     }
   }
   return null;
+}
+
+/* ─── Verschobene Trainingstage ──────────────────────────────────────────── */
+
+/** Kennung für „an diesem Tag ausdrücklich kein Training". */
+export const NO_SESSION = 'none';
+
+/**
+ * Eine Einheit auf einen anderen Tag legen — oder eine Verschiebung aufheben.
+ *
+ * `planId === null` löscht den Eintrag und lässt wieder den Wochentag aus dem
+ * Plan gelten. Das ist wichtig: sonst könnte man eine Verschiebung nie
+ * zurücknehmen, ohne zu wissen, was vorher galt.
+ */
+export function withScheduleOverride(state, dayKey, planId) {
+  parseKey(dayKey);
+  const schedule = { ...(state.schedule ?? {}) };
+  if (planId === null) delete schedule[dayKey];
+  else schedule[dayKey] = planId;
+  return { ...state, schedule };
+}
+
+/* ─── Yazio-Wochenschnitt ────────────────────────────────────────────────── */
+
+const WEEK_MACRO_LIMITS = { kcal: 8000, proteinG: 600, carbsG: 1200, fatG: 400 };
+
+/**
+ * Wochenschnitt der Makros schreiben.
+ *
+ * Getragen wird der MONTAGSSCHLÜSSEL der Woche. Flocke liest die Zahlen aus
+ * Yazio ab; die App rechnet sie nicht aus den Tageswerten, weil dort nur
+ * steht, was er hier von Hand einträgt.
+ */
+export function withWeekMacros(state, weekStart, patch) {
+  parseKey(weekStart);
+  if (!isPlainObject(patch)) {
+    throw new TypeError(`Wochen-Patch muss ein Objekt sein, war: ${patch}`);
+  }
+  for (const [field, max] of Object.entries(WEEK_MACRO_LIMITS)) {
+    const value = patch[field];
+    if (value !== null && value !== undefined) {
+      assertNumber(value, `weeks.${field}`, 0, max);
+    }
+  }
+
+  const weeks = { ...(state.weeks ?? {}) };
+  weeks[weekStart] = { ...(weeks[weekStart] ?? {}), ...patch };
+  return { ...state, weeks };
+}
+
+/** Wochenschnitt lesen. Nie undefined. */
+export function getWeekMacros(state, weekStart) {
+  parseKey(weekStart);
+  return {
+    kcal: null, proteinG: null, carbsG: null, fatG: null, note: null,
+    ...(state.weeks?.[weekStart] ?? {}),
+  };
+}
+
+/* ─── Monats-Reviews ─────────────────────────────────────────────────────── */
+
+/**
+ * Einen Monats-Review-Datensatz ablegen oder ersetzen.
+ *
+ * Ein Monat kann nur einen Datensatz haben — ein zweites Review desselben
+ * Monats ist eine Korrektur, keine zusätzliche Meinung.
+ */
+export function withReviewRecord(state, record) {
+  if (!isPlainObject(record) || typeof record.month !== 'string') {
+    throw new TypeError('Ein Monats-Review braucht mindestens einen Monatsschlüssel.');
+  }
+  const reviews = [...(state.reviews ?? []).filter((r) => r.month !== record.month), record]
+    .sort((a, b) => a.month.localeCompare(b.month));
+  return { ...state, reviews };
+}
+
+/** Review eines Monats, oder null. */
+export function getReviewRecord(state, mk) {
+  return (state.reviews ?? []).find((r) => r.month === mk) ?? null;
 }
 
 /* ─── Profil ─────────────────────────────────────────────────────────────── */
@@ -433,4 +587,51 @@ export function loggedDayKeys(state) {
   return Object.keys(state.days ?? {})
     .filter((k) => toMonthKey(k) === month)
     .sort();
+}
+
+/**
+ * Der früheste Monat, den die App überhaupt kennt.
+ *
+ * Er wird ABGELEITET, nicht eingestellt: der früheste Monat, in dem es Tage,
+ * eine Monats-Summary oder ein Review gibt. Damit gibt es keine zweite
+ * Wahrheit, die man pflegen müsste — wer einen Monat löscht, verschiebt damit
+ * auch den Anfang, und wer alte Daten einspielt, holt sie sich zurück.
+ *
+ * Gebraucht wird das überall, wo die App rückwärts blickt: das Review darf
+ * nicht vor diesen Monat blättern, es darf für einen Monat davor kein Review
+ * verlangen, und die Wochentabelle im Reiter Essen darf keine Wochen davor
+ * auflisten. Leere Zeilen aus einer Zeit ohne Daten liest man als Fehler.
+ *
+ * Steht hier und nicht in review.js, weil es eine Frage an den ZUSTAND ist und
+ * keine an eine Auswertung — sonst müsste weekly.js das Review importieren.
+ */
+export function firstTrackedMonth(state, today) {
+  const months = [];
+
+  for (const key of Object.keys(state?.days ?? {})) {
+    try {
+      months.push(toMonthKey(key));
+    } catch { /* kaputter Schlüssel — der zählt hier nicht */ }
+  }
+  for (const m of state?.months ?? []) {
+    if (typeof m?.month === 'string') months.push(m.month);
+  }
+  for (const r of state?.reviews ?? []) {
+    if (typeof r?.month === 'string') months.push(r.month);
+  }
+
+  const valid = months.filter((mk) => /^\d{4}-(0[1-9]|1[0-2])$/.test(mk)).sort();
+  const current = toMonthKey(today);
+
+  // Ohne jede Daten fängt die Zeitrechnung heute an.
+  if (valid.length === 0) return current;
+
+  /* Nie in der Zukunft: ein nachgetragener Tag im nächsten Monat verschiebt den
+     Anfang nicht nach vorn. */
+  return valid[0] < current ? valid[0] : current;
+}
+
+/** Der erste Tag, den die App kennt — die Untergrenze jedes Rückblicks. */
+export function firstTrackedDay(state, today) {
+  return `${firstTrackedMonth(state, today)}-01`;
 }

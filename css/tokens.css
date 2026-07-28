@@ -1,9 +1,19 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Lebenstracker — Design-Tokens, Richtung "Flutlicht"
+   Lebenstracker — Design-Tokens, Richtung "Flutlicht bei Nacht"
 
-   Ein Amateurplatz bei Flutlicht, abends: entsättigtes Platz-Grünschwarz,
-   kreideweiße Haarlinien wie Spielfeldmarkierungen, und ein einziger
-   chromatischer Signalton — das Natriumdampf-Orange alter Flutlichtmasten.
+   Der Platz bleibt dunkel — grünstichiges Schwarz, kreideweiße Haarlinien wie
+   Spielfeldmarkierungen. Darüber liegt jetzt aber ein VOLLES Farbsystem: jeder
+   Zustand hat eine eigene Farbe, jede Messgröße einen eigenen Farbton.
+
+   Warum die Kehrtwende gegenüber dem ersten Entwurf: Flockes Vorgabe lautet
+   "man soll direkt erkennen, wenn was gut oder schlecht läuft". Ein
+   entsättigter Screen kann das nicht — die Abwesenheit von Farbe ist kein
+   Signal, das man aus dem Augenwinkel liest. Also drei klare Statusfarben und
+   sechs kategoriale Datenfarben.
+
+   Was BLEIBT: jeder Status trägt immer zusätzlich ein WORT. Farbe beschleunigt
+   das Erkennen, sie trägt die Information nicht allein. Und Schwellen in Charts
+   bleiben Referenzlinien, keine Farbwechsel der Marke.
 
    Die Palette ist geprüft, nicht geschätzt:
        python3 tools/check_contrast.py
@@ -34,14 +44,16 @@
      REGELN (aus tools/check_contrast.py, Abschnitt 4 — bitte einhalten,
      sonst ist der Prüfbericht ungültig):
 
-     1. Charts benutzen nur --chalk-100, --chalk-500, --data-500 und
-        --sodium-500. --redcard-500 kommt in KEINEM Chart vor: gegen
-        --data-500 kollabiert es bei Protanopie auf ΔE 3.7.
-     2. Schwellenwerte werden als Referenzlinie gezeichnet, nie als Farbe
-        der Marke. Position ist die robustere Kodierung.
-     3. Kein Ampelsystem. "Alles gut" ist die ABWESENHEIT von Farbe.
-        Das Flutlicht geht nur an, wenn etwas Aufmerksamkeit braucht.
-     4. Jeder Zustand trägt immer ein WORT, nie Farbe allein.
+     1. Statusfarbe ist DREISTUFIG: --good / --ok / --bad. Nie eine vierte
+        Zwischenstufe erfinden — drei Stufen kann man aus dem Augenwinkel
+        auseinanderhalten, fünf nicht.
+     2. Jeder Zustand trägt immer ein WORT zur Farbe. Farbe beschleunigt,
+        sie trägt nicht allein.
+     3. Kategoriale Datenfarben (--c-…) gehören je einer MESSGRÖSSE, nicht
+        einem Zustand. Gewicht ist immer blau, Schlaf immer violett — über
+        alle Screens hinweg.
+     4. Schwellen in Charts bleiben Referenzlinien. Position funktioniert
+        bei jeder Farbfehlsichtigkeit, Farbe nicht.
      ════════════════════════════════════════════════════════════════════════ */
 
   /* Flächen — grünstichiges Schwarz, nie reines #000 */
@@ -56,17 +68,55 @@
   --line-200: rgba(237, 241, 236, 0.14);   /* Haarlinie = Markierung */
   --line-300: rgba(237, 241, 236, 0.26);   /* betonte Haarlinie */
 
-  /* Daten — recessive Marke. NUR Grafik, trägt niemals Schrift. */
-  --data-500: #63796F;           /* Balken, ruhende Marken        4.1:1 */
+  /* Daten — recessive Marke für ruhende Balken. Trägt niemals Schrift. */
+  --data-500: #63796F;           /* 4.1:1 gegen --pitch-900 */
 
-  /* Signal — Natriumdampf. Der einzige chromatische Akzent. */
-  --sodium-500: #FF8A1F;         /* Warnung, aktueller Wert       8.0:1 */
-  --sodium-fill: rgba(255, 138, 31, 0.16);   /* Fläche unter Linien */
-  --sodium-glow: rgba(255, 138, 31, 0.32);   /* Fokusring */
+  /* ─── Status: drei Stufen, überall dieselben ───────────────────────────
 
-  /* Rote Karte — ausschließlich Text für den Zustand "Ruhetag".
-     Auf --pitch-700 nur ab 24px bzw. 19px bold (4.21:1). */
-  --redcard-500: #F53B5C;        /* Alarmzustand                  5.1:1 */
+     Die Grün/Rot-Paarung ist die wichtigste Unterscheidung der App und
+     gleichzeitig die anfälligste. Deshalb ein HELLES Grün gegen ein
+     kräftiges Rosa: der Unterschied liegt dann nicht nur in der Buntheit,
+     sondern auch in der Helligkeit — und die bleibt bei Deuteranopie
+     erhalten. Nachgerechnet in tools/check_contrast.py. */
+  --good-500: #6EE7B7;           /* 12.4:1 gegen --pitch-900 */
+  --ok-500: #FBBF24;             /* 11.3:1 */
+  --bad-500: #FF4D6D;            /*  5.9:1 */
+
+  --good-fill: rgba(110, 231, 183, 0.14);
+  --ok-fill: rgba(251, 191, 36, 0.14);
+  --bad-fill: rgba(255, 77, 109, 0.16);
+
+  --good-edge: rgba(110, 231, 183, 0.45);
+  --ok-edge: rgba(251, 191, 36, 0.45);
+  --bad-edge: rgba(255, 77, 109, 0.5);
+
+  /* ─── Kategorial: eine Farbe je Messgröße ─────────────────────────────
+     Gewicht ist überall blau, Schlaf überall violett. Diese Farben stehen
+     nie zwei in EINEM Chart — jedes Bild trägt genau eine Messgröße und
+     einen Titel. Der Titel ist die Kodierung, die Farbe ist die
+     Wiedererkennung über die Screens hinweg. */
+  --c-weight: #38BDF8;           /* Gewicht          — Blau     8.8:1 */
+  --c-sleep: #D8B4FE;            /* Schlaf           — Violett 11.8:1 */
+  --c-ready: #6EE7B7;            /* Bereitschaft     — Grün    12.4:1 */
+  --c-kcal: #FB923C;             /* Kalorien         — Orange   8.4:1 */
+  --c-protein: #F472B6;          /* Protein          — Pink     7.2:1 */
+  --c-volume: #FACC15;           /* Trainingsvolumen — Gelb    12.4:1 */
+
+  /* Makro-Balken — eigene Dreiergruppe, weil sie als einzige DIREKT
+     übereinander in einer Karte stehen und deshalb untereinander
+     unterscheidbar sein müssen (jeder trägt zusätzlich seinen Namen).
+     Geprüft als eigene Gruppe in tools/check_contrast.py. */
+  --m-protein: #F472B6;          /* Pink   7.2:1 */
+  --m-carbs: #22D3EE;            /* Cyan  10.3:1 */
+  --m-fat: #FACC15;              /* Gelb  12.4:1 */
+
+  /* Signal — Natriumdampf. Bedienelemente und "jetzt dran". */
+  --sodium-500: #FF8A1F;         /* 8.0:1 */
+  --sodium-fill: rgba(255, 138, 31, 0.16);
+  --sodium-glow: rgba(255, 138, 31, 0.32);
+
+  /* Alter Name, damit nichts still bricht — zeigt auf --bad-500. */
+  --redcard-500: var(--bad-500);
 
   /* Semantische Aliase */
   --bg: var(--pitch-900);
@@ -116,7 +166,13 @@
   --radius-sm: 4px;     /* Datenenden von Balken */
   --radius-md: 10px;    /* Karten, Eingabefelder */
   --radius-lg: 16px;    /* Bereitschafts-Karte */
+  --radius-xl: 22px;    /* Overlay-Fenster */
   --radius-pill: 999px;
+
+  /* Overlay-Fenster: Verdunkelung dahinter und Schatten darunter. Ohne beides
+     schwebt das Fenster nicht, sondern klebt am Screen. */
+  --scrim: rgba(6, 10, 8, 0.72);
+  --shadow-sheet: 0 -8px 40px rgba(0, 0, 0, 0.55);
 
   --tap-min: 48px;      /* Mindestgröße jeder Trefferfläche */
   --content-max: 34rem; /* Lesebreite, zentriert auf großen Displays */

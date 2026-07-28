@@ -9,6 +9,7 @@ import { createStore, requestPersistentStorage } from './store.js';
 import { isProfileComplete } from './lib/state.js';
 import { formatMonth, monthKey, todayKey } from './lib/dates.js';
 import { el, replace } from './views/dom.js';
+import { closeSheet } from './views/sheet.js';
 import { needsRollover } from './lib/archive.js';
 import * as todayView from './views/today.js';
 import * as trainingView from './views/training.js';
@@ -47,10 +48,22 @@ const root = document.getElementById('app');
 const EXTRA_ROUTES = ['profil', 'archiv'];
 
 function currentRoute() {
-  // Der Teil hinter `?` gehört der Ansicht (Zeitraum im Review), nicht der Route.
+  /* Der Teil hinter `?` gehört der Ansicht — der Zeitraum im Review, der
+     gezeigte Tag auf dem Heute-Screen —, nicht der Route. */
   const id = location.hash.replace(/^#\/?/, '').split('?')[0];
   if (EXTRA_ROUTES.includes(id)) return id;
   return ROUTES.some((r) => r.id === id) ? id : DEFAULT_ROUTE;
+}
+
+/** Beim Wechseln des Reiters gehört ein offenes Fenster zu. */
+let lastRoute = currentRoute();
+function onHashChange() {
+  const route = currentRoute();
+  if (route !== lastRoute) {
+    lastRoute = route;
+    closeSheet();
+  }
+  render();
 }
 
 function navigate(id) {
@@ -143,19 +156,32 @@ function renderApp() {
 }
 
 function render() {
-  /* Jede Eingabe im Check-in speichert sofort und löst ein Neuzeichnen aus.
-     Ohne das hier würde die Seite dabei jedes Mal nach oben springen — nach
-     dem dritten Antippen benutzt das niemand mehr. */
+  /* Jede Eingabe speichert sofort und löst ein Neuzeichnen aus. Ohne das hier
+     würde die Seite dabei jedes Mal nach oben springen — nach dem dritten
+     Antippen benutzt das niemand mehr. */
   const scrollY = window.scrollY;
-  const openReveals = [...document.querySelectorAll('.reveal[open]')].length;
+
+  /* Offene Aufklappbereiche NAMENTLICH merken.
+   *
+   * Vorher wurde nur gezählt und danach alles wieder aufgeklappt — mit einem
+   * einzigen Bereich pro Screen ging das noch durch. Seit Essen und Trends aus
+   * mehreren Abschnitten bestehen, wäre es falsch: wer einen aufklappt, hätte
+   * hinterher alle offen.
+   *
+   * Nur Bereiche INNERHALB der App. Die Overlay-Fenster hängen an
+   * document.body und zeichnen sich selbst neu (js/views/sheet.js). */
+  const openKeeps = [...root.querySelectorAll('details[data-keep]')]
+    .filter((d) => d.open)
+    .map((d) => d.dataset.keep);
 
   try {
     if (!isProfileComplete(store.getState()?.profile)) renderOnboarding();
     else if (needsRollover(store.getState())) renderRollover();
     else {
       renderApp();
-      if (openReveals > 0) {
-        document.querySelectorAll('.reveal').forEach((d) => { d.open = true; });
+      for (const keep of openKeeps) {
+        const found = root.querySelector(`details[data-keep="${keep}"]`);
+        if (found) found.open = true;
       }
       window.scrollTo(0, scrollY);
     }
@@ -218,7 +244,7 @@ function boot() {
   }
 
   store.subscribe(render);
-  window.addEventListener('hashchange', render);
+  window.addEventListener('hashchange', onHashChange);
   render();
 
   // Nur eine Bitte an den Browser. Der monatliche Export bleibt Pflicht.

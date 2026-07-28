@@ -9,7 +9,10 @@
  */
 
 import { monthKey, todayKey } from './lib/dates.js';
-import { migrate, withDay, withProfile, withSet, withoutSet } from './lib/state.js';
+import {
+  migrate, withDay, withProfile, withSet, withoutSet,
+  withSessionMeta, withScheduleOverride, withWeekMacros, withReviewRecord,
+} from './lib/state.js';
 
 export const STORAGE_KEY = 'lebenstracker.v1';
 
@@ -114,6 +117,12 @@ export function createStore({ storage, today = todayKey } = {}) {
       update((s) => withSet(s, key, planId, exId, index, patch)),
     clearSet: (key, planId, exId, index) =>
       update((s) => withoutSet(s, key, planId, exId, index)),
+    setSessionMeta: (key, planId, patch) =>
+      update((s) => withSessionMeta(s, key, planId, patch)),
+    /** Einheit auf einen anderen Tag legen. planId === null hebt das auf. */
+    moveSession: (key, planId) => update((s) => withScheduleOverride(s, key, planId)),
+    setWeekMacros: (weekStart, patch) => update((s) => withWeekMacros(s, weekStart, patch)),
+    saveReview: (record) => update((s) => withReviewRecord(s, record)),
 
     /** Nur für Tests und den Zurücksetzen-Knopf im Profil. */
     clear() {

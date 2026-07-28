@@ -110,6 +110,9 @@ export function buildExport(state, mk = state.currentMonth, stamp) {
   const days = Object.fromEntries(
     Object.entries(state.days ?? {}).filter(([key]) => monthKey(key) === mk)
   );
+  const schedule = Object.fromEntries(
+    Object.entries(state.schedule ?? {}).filter(([key]) => monthKey(key) === mk)
+  );
 
   return {
     exportVersion: EXPORT_VERSION,
@@ -119,6 +122,15 @@ export function buildExport(state, mk = state.currentMonth, stamp) {
     exportedAt: stamp,
     profile: state.profile,
     days,
+    /* Verschobene Trainingstage dieses Monats. Ohne sie ließe sich nach einem
+       Wiederherstellen nicht mehr erkennen, warum am Freitag ein Push-Training
+       geloggt ist. */
+    schedule,
+    /* Wochenschnitte und Reviews vollständig, nicht nur die des Monats: sie
+       sind wenige Kilobyte und eine Woche liegt regelmäßig über der
+       Monatsgrenze. */
+    weeks: state.weeks ?? {},
+    reviews: state.reviews ?? [],
     summary: monthSummary(state, mk),
     previousMonths: state.months ?? [],
   };
@@ -158,6 +170,10 @@ export function closeMonth(state, today = todayKey()) {
   const keptDays = Object.fromEntries(
     Object.entries(state.days ?? {}).filter(([key]) => monthKey(key) !== mk)
   );
+  // Verschiebungen gehören zu ihren Tagen und gehen mit ihnen weg.
+  const keptSchedule = Object.fromEntries(
+    Object.entries(state.schedule ?? {}).filter(([key]) => monthKey(key) !== mk)
+  );
 
   const months = [...(state.months ?? []).filter((m) => m.month !== mk),
     { month: mk, closedAt: today, summary }]
@@ -166,6 +182,7 @@ export function closeMonth(state, today = todayKey()) {
   return {
     ...state,
     days: keptDays,
+    schedule: keptSchedule,
     months,
     currentMonth: monthKey(today),
   };
@@ -235,8 +252,29 @@ export function applyImport(state, raw, { overwrite = false } = {}) {
   }
   months.sort((a, b) => a.month.localeCompare(b.month));
 
+  /* Verschiebungen und Wochenschnitte folgen derselben Regel wie die Tage:
+     Vorhandenes bleibt stehen, sofern nicht ausdrücklich überschrieben wird. */
+  const schedule = { ...(state.schedule ?? {}) };
+  for (const [key, planId] of Object.entries(raw.schedule ?? {})) {
+    if (overwrite || !(key in schedule)) schedule[key] = planId;
+  }
+
+  const weeks = { ...(state.weeks ?? {}) };
+  for (const [key, macros] of Object.entries(raw.weeks ?? {})) {
+    if (overwrite || !(key in weeks)) weeks[key] = macros;
+  }
+
+  // Reviews: je Monat einer. Ein vorhandener bleibt, er enthält Antworten.
+  const reviews = [...(state.reviews ?? [])];
+  const reviewed = new Set(reviews.map((r) => r.month));
+  for (const record of raw.reviews ?? []) {
+    if (!record?.month) continue;
+    if (!reviewed.has(record.month)) { reviews.push(record); reviewed.add(record.month); }
+  }
+  reviews.sort((a, b) => a.month.localeCompare(b.month));
+
   return {
-    state: migrate({ ...state, days, months }, state.currentMonth),
+    state: migrate({ ...state, days, months, schedule, weeks, reviews }, state.currentMonth),
     added,
     skipped,
   };
@@ -269,11 +307,15 @@ export function exportReminder(state, today = todayKey()) {
 
   const exported = new Date(stamp);
   const days = Math.floor((now - exported) / 86400000);
-  return {
-    due: days >= EXPORT_REMINDER_DAYS,
-    daysSince: days,
-    text: days >= EXPORT_REMINDER_DAYS
-      ? `Letzte Sicherung vor ${days} Tagen.`
-      : `Zuletzt gesichert vor ${days} ${days === 1 ? 'Tag' : 'Tagen'}.`,
-  };
+
+  /* „vor 0 Tagen" ist keine Auskunft. Der Text ist außerdem die einzige
+     Bestätigung nach einem Export — die Ansicht zeichnet sich dabei neu, eine
+     Meldung im Screen wäre sofort wieder weg (siehe js/views/archive.js). */
+  const text = days >= EXPORT_REMINDER_DAYS
+    ? `Letzte Sicherung vor ${days} Tagen.`
+    : days <= 0
+      ? 'Heute gesichert.'
+      : `Zuletzt gesichert vor ${days} ${days === 1 ? 'Tag' : 'Tagen'}.`;
+
+  return { due: days >= EXPORT_REMINDER_DAYS, daysSince: days, text };
 }

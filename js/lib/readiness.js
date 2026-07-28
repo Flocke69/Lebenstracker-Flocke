@@ -1,16 +1,24 @@
 /* Bereitschaft — aus dem Morgen-Check-in wird eine Trainingsanweisung.
  *
- * Der Score allein ist wertlos. Entscheidend ist, dass die App SAGT, was
- * heute zu tun ist, und WARUM. Deshalb liefert jede Auswertung die
- * Bremsklötze mit: nicht "63", sondern "63 — Schlaf 5,4 h und Muskelkater
- * 4 von 5, deshalb ein Satz weniger".
+ * VIER FRAGEN, NICHT SECHS. Der erste Entwurf fragte zusätzlich nach
+ * Schlafqualität und Stimmung. Beide sind gestrichen: Schlafqualität ist
+ * morgens kaum von der Schlafdauer zu trennen, und die Stimmung schwankt aus
+ * Gründen, die mit dem Training nichts zu tun haben. Vier Fragen sind in
+ * dreißig Sekunden beantwortet — und ein Check-in, der jeden Tag passiert,
+ * ist mehr wert als ein genauerer, der nach zwei Wochen liegen bleibt.
  *
- * Zur Gewichtung: Schlaf trägt zusammen 40 %, weil Schlafmangel der am
- * besten belegte Einzelfaktor für schlechtere Leistung und höheres
- * Verletzungsrisiko ist. Aber bewusst UNTER 50 % — sonst kippt der ganze
- * Score an einer einzigen Zahl, die man morgens ohnehin nur schätzt.
- * Muskelkater und Energie folgen mit je 20 %, weil sie direkt beschreiben,
- * was heute im Gym überhaupt geht. Stimmung und Stress mit je 10 %.
+ * KEINE PUNKTZAHL FÜR DEN BENUTZER. Der Score existiert weiter, weil Trends,
+ * Reviews und das Monatsarchiv eine vergleichbare Zahl brauchen. Auf dem
+ * Screen steht er nicht: dort gibt es eine Grafik und ein Wort — "Alles gut",
+ * "Geht so", "Schlecht". "63 von 100" beantwortet keine Frage, die man
+ * morgens hat.
+ *
+ * Zur Gewichtung: Schlaf trägt 35 %, weil Schlafmangel der am besten belegte
+ * Einzelfaktor für schlechtere Leistung und höheres Verletzungsrisiko ist.
+ * Aber bewusst UNTER 50 % — sonst kippt der ganze Score an einer einzigen
+ * Zahl, die man morgens ohnehin nur schätzt. Energie und Muskelkater folgen
+ * mit je 25 %, weil sie direkt beschreiben, was heute im Gym überhaupt geht.
+ * Stress mit 15 %.
  *
  * Diese Datei kennt kein DOM und keinen Kalender. Die Spieltags-Regel liegt
  * in planner.js — hier wird sie nur berücksichtigt, nie überstimmt.
@@ -21,32 +29,18 @@ export const CHECKIN_FIELDS = Object.freeze([
   {
     key: 'sleepHours',
     kind: 'hours',
-    label: 'Schlafdauer',
+    label: 'Schlaf',
+    question: 'Wie lange hast du geschlafen?',
     unit: 'h',
     higherIsBetter: true,
     min: 0,
     max: 16,
   },
   {
-    key: 'sleepQuality',
-    kind: 'scale',
-    label: 'Schlafqualität',
-    higherIsBetter: true,
-    low: 'unruhig',
-    high: 'tief',
-  },
-  {
-    key: 'mood',
-    kind: 'scale',
-    label: 'Stimmung',
-    higherIsBetter: true,
-    low: 'mies',
-    high: 'top',
-  },
-  {
     key: 'energy',
     kind: 'scale',
     label: 'Energie',
+    question: 'Wie voll ist der Tank?',
     higherIsBetter: true,
     low: 'leer',
     high: 'voll',
@@ -55,6 +49,7 @@ export const CHECKIN_FIELDS = Object.freeze([
     key: 'soreness',
     kind: 'scale',
     label: 'Muskelkater',
+    question: 'Wie viel Muskelkater hast du?',
     higherIsBetter: false,
     low: 'keiner',
     high: 'stark',
@@ -63,6 +58,7 @@ export const CHECKIN_FIELDS = Object.freeze([
     key: 'stress',
     kind: 'scale',
     label: 'Stress',
+    question: 'Wie viel Stress hast du gerade?',
     higherIsBetter: false,
     low: 'ruhig',
     high: 'viel',
@@ -70,12 +66,10 @@ export const CHECKIN_FIELDS = Object.freeze([
 ]);
 
 export const WEIGHTS = Object.freeze({
-  sleepHours: 0.25,
-  sleepQuality: 0.15,
-  mood: 0.10,
-  energy: 0.20,
-  soreness: 0.20,
-  stress: 0.10,
+  sleepHours: 0.35,
+  energy: 0.25,
+  soreness: 0.25,
+  stress: 0.15,
 });
 
 /** Ab hier volles Programm. */
@@ -97,6 +91,53 @@ const FIELD_BY_KEY = Object.fromEntries(CHECKIN_FIELDS.map((f) => [f.key, f]));
 const clamp01 = (v) => Math.min(Math.max(v, 0), 1);
 const de = (v, digits = 1) =>
   v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
+/* ─── Anzeigestufen ──────────────────────────────────────────────────────────
+ *
+ * Drei Stufen, jede mit Wort, Kurzsatz und Farbtoken. Die App zeigt Farbe UND
+ * Wort — Farbe allein wäre für jeden mit Rot-Grün-Schwäche keine Information.
+ */
+export const LEVELS = Object.freeze({
+  full: {
+    key: 'full',
+    word: 'Alles gut',
+    tone: 'good',
+    /** Anteil des Rings, der gefüllt wird. Keine Punktzahl, eine Menge. */
+    fill: 1,
+    short: 'Voll trainieren',
+  },
+  reduced: {
+    key: 'reduced',
+    word: 'Geht so',
+    tone: 'ok',
+    fill: 0.6,
+    short: 'Etwas zurücknehmen',
+  },
+  rest: {
+    key: 'rest',
+    word: 'Schlecht',
+    tone: 'bad',
+    fill: 0.25,
+    short: 'Heute nichts Schweres',
+  },
+  none: {
+    key: 'none',
+    /* Kurz halten: das Wort steht IM Bogen, und dort ist der Platz begrenzt.
+       Ein Wort, das über den Bogen hinausläuft, sieht nach Fehler aus. */
+    word: 'Noch offen',
+    tone: 'idle',
+    fill: 0,
+    short: 'Vier Fragen',
+  },
+});
+
+/** Stufe eines Teilwerts — für die vier Balken in der Grafik. */
+export function toneOfSub(sub) {
+  if (typeof sub !== 'number' || !Number.isFinite(sub)) return 'idle';
+  if (sub >= THRESHOLD_FULL) return 'good';
+  if (sub >= THRESHOLD_REDUCED) return 'ok';
+  return 'bad';
+}
 
 /* ─── Teilwerte ──────────────────────────────────────────────────────────── */
 
@@ -141,7 +182,7 @@ function validate(field, value) {
  * ausgefüllt, ist der Score `null` und nicht 0: 0 wäre ein Messwert und
  * würde jeden späteren Durchschnitt verfälschen.
  *
- * @returns {{score, level, subScores, limiters, missing, isComplete, weightUsed}}
+ * @returns {{score, level, display, subScores, limiters, missing, isComplete, weightUsed}}
  */
 export function readinessScore(checkin) {
   const source = checkin ?? {};
@@ -167,6 +208,7 @@ export function readinessScore(checkin) {
     return {
       score: null,
       level: null,
+      display: LEVELS.none,
       subScores: {},
       limiters: [],
       missing,
@@ -176,6 +218,7 @@ export function readinessScore(checkin) {
   }
 
   const score = weighted / weightSum;
+  const level = score >= THRESHOLD_FULL ? 'full' : score >= THRESHOLD_REDUCED ? 'reduced' : 'rest';
 
   const limiters = Object.entries(subScores)
     .filter(([, sub]) => sub < LIMITER_BELOW)
@@ -190,7 +233,8 @@ export function readinessScore(checkin) {
 
   return {
     score,
-    level: score >= THRESHOLD_FULL ? 'full' : score >= THRESHOLD_REDUCED ? 'reduced' : 'rest',
+    level,
+    display: LEVELS[level],
     subScores,
     limiters,
     missing,
@@ -209,7 +253,7 @@ const LEG_CAP_BY_LEVEL = { full: 'heavy', reduced: 'heavy', rest: 'light' };
 const HEADLINE = {
   full: 'Volles Programm',
   reduced: 'Volumen reduziert',
-  rest: 'Ruhetag oder nur Prophylaxe',
+  rest: 'Ruhetag oder nur leichtes Zeug',
 };
 
 /**
@@ -230,7 +274,8 @@ export function trainingGuidance(readiness, legAllowance) {
   if (readiness?.score === null || readiness?.score === undefined) {
     return {
       headline: 'Check-in fehlt',
-      detail: 'Trag ein, wie du geschlafen hast und wie es dir geht — dann passt die App das Training an.',
+      detail: 'Vier Fragen, dann passt die App das Training an dich an.',
+      tone: 'idle',
       setsDelta: 0,
       rpeCap: null,
       legLevel: allowanceLevel,
@@ -263,12 +308,15 @@ export function trainingGuidance(readiness, legAllowance) {
   return {
     headline: HEADLINE[readiness.level],
     detail,
+    tone: readiness.display.tone,
     setsDelta: { full: 0, reduced: -1, rest: -2 }[readiness.level],
     rpeCap: { full: null, reduced: 8, rest: 7 }[readiness.level],
     legLevel,
     legReason: allowanceBinds
       ? allowanceReason
-      : `Bereitschaft ${Math.round(readiness.score)} von 100 — ${detail} Heute nichts Schweres für die Beine.`,
+      /* Die Zahl steht hier bewusst NICHT mehr drin — der Check-in erzeugt
+         keine Punktzahl für den Benutzer. Was zählt, ist der Grund. */
+      : `${detail} Heute nichts Schweres für die Beine.`,
     limitedBy: allowanceBinds ? 'Spielrhythmus' : 'Bereitschaft',
   };
 }

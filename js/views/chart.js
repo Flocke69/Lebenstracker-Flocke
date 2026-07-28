@@ -10,16 +10,19 @@
  *   waagerechte Kreidelinie, kein roter Balken. Position funktioniert bei
  *   jeder Farbfehlsichtigkeit, Farbe nicht.
  *
- *   NUR DREI MARKENFARBEN: Kreide für Rohwerte, --data-500 für ruhende
- *   Balken, Sodium für den hervorgehobenen Wert. Rot kommt in keinem Chart
- *   vor — gegen das Grün von --data-500 kollabiert es bei Protanopie.
- *
- *   EINE SERIE, KEINE LEGENDE. Der Titel benennt sie. Beschriftet werden
- *   nur ausgewählte Punkte, nie alle.
+ *   EINE FARBE JE MESSGRÖSSE, durchgehend über alle Screens: Gewicht blau,
+ *   Schlaf violett, Bereitschaft grün, Kalorien orange, Protein pink,
+ *   Volumen gelb. Weil ein Chart immer nur EINE Messgröße trägt, braucht es
+ *   keine Legende — der Titel benennt sie, die Farbe macht sie
+ *   wiedererkennbar. Die Farbe wird über `series` gewählt und landet als
+ *   CSS-Klasse am SVG, nicht als Attribut: so bleibt die Palette in
+ *   tokens.css und ist prüfbar.
  *
  * Antippen statt Hover: ein Fingertipp auf einen Wert schreibt Datum und
  * Zahl in die Zeile unter dem Chart. Die Trefferfläche ist deutlich größer
- * als die Marke.
+ * als die Marke. Bei sehr langen Reihen (über 70 Tagen) werden die
+ * Trefferflächen weggelassen — 300 Rechtecke à 1 px trifft niemand, und der
+ * Chart soll den Verlauf zeigen, nicht den einzelnen Tag.
  */
 
 import { formatDayShort, weekdayShort } from '../lib/dates.js';
@@ -42,15 +45,40 @@ function svgEl(tag, attrs = {}) {
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
-/** Achsengrenzen mit etwas Luft. Bei einer flachen Reihe wird sie aufgespreizt. */
-function bounds(values, { fromZero = false, include = [] } = {}) {
+/** Ab so vielen Punkten lohnt sich das Antippen einzelner Tage nicht mehr. */
+const MAX_HIT_POINTS = 70;
+
+/** Erlaubte Messgrößen — die Klasse landet am SVG und wählt die Farbe. */
+const SERIES = ['weight', 'sleep', 'ready', 'kcal', 'protein', 'volume', 'neutral'];
+
+function seriesClass(series) {
+  if (series && !SERIES.includes(series)) {
+    throw new RangeError(
+      `Unbekannte Messgröße "${series}". Erlaubt: ${SERIES.join(', ')}`
+    );
+  }
+  return `chart--${series ?? 'neutral'}`;
+}
+
+/**
+ * Achsengrenzen mit etwas Luft. Bei einer flachen Reihe wird sie aufgespreizt.
+ *
+ * `maxCap` deckelt die Obergrenze. Ohne das stand über einer Reihe, die bei 100
+ * endet, die Achsenbeschriftung "108" — und behauptete damit einen Wertebereich,
+ * den es nicht gibt.
+ */
+function bounds(values, { fromZero = false, include = [], maxCap = null } = {}) {
   const known = values.filter(isNum).concat(include.filter(isNum));
-  if (known.length === 0) return { min: 0, max: 1 };
+  if (known.length === 0) return { min: 0, max: maxCap ?? 1 };
   let min = fromZero ? 0 : Math.min(...known);
   let max = Math.max(...known);
   if (min === max) { min -= 1; max += 1; }
   const pad = (max - min) * 0.08;
-  return { min: fromZero ? 0 : min - pad, max: max + pad };
+  const paddedMax = max + pad;
+  return {
+    min: fromZero ? 0 : min - pad,
+    max: maxCap === null ? paddedMax : Math.min(paddedMax, maxCap),
+  };
 }
 
 /* ─── Gerüst ─────────────────────────────────────────────────────────────── */
@@ -151,17 +179,18 @@ function addHitAreas(svg, box, keys, values, out, format) {
  */
 export function lineChart({
   keys, raw, avg, title, unit = '', height = 150, digits = 1, refs = [], fromZero = false,
+  series = null, maxCap = null,
 }) {
   const box = frame(height);
   const { min, max } = bounds([...raw, ...(avg ?? [])],
-    { fromZero, include: refs.map((r) => r.value) });
+    { fromZero, include: refs.map((r) => r.value), maxCap });
   const scaleY = (v) => box.y1 - ((v - min) / (max - min)) * box.height;
   const step = keys.length > 1 ? box.width / (keys.length - 1) : 0;
   const format = (v) => `${dec(v, digits)}${unit ? ` ${unit}` : ''}`;
 
   const svg = svgEl('svg', {
     viewBox: `0 0 ${W} ${height}`,
-    class: 'chart',
+    class: `chart ${seriesClass(series)}`,
     role: 'img',
     'aria-label': title,
   });
@@ -190,13 +219,18 @@ export function lineChart({
     flush();
   }
 
-  // Rohwerte als Punkte
+  // Rohwerte als Punkte. Bei langen Reihen kleiner, sonst wird es ein Teppich.
+  const dotRadius = keys.length > MAX_HIT_POINTS ? 1.4 : 3;
   raw.forEach((v, i) => {
     if (!isNum(v)) return;
     svg.append(svgEl('circle', {
-      cx: box.x0 + i * step, cy: scaleY(v), r: 3, class: 'chart__dot',
+      cx: box.x0 + i * step, cy: scaleY(v), r: dotRadius, class: 'chart__dot',
     }));
   });
+
+  if (keys.length > MAX_HIT_POINTS) {
+    return el('div', { class: 'chart-wrap' }, svg);
+  }
 
   const out = readout('Tippe einen Tag an.');
   addHitAreas(svg, box, keys, raw, out, format);
@@ -213,6 +247,7 @@ export function lineChart({
  */
 export function barChart({
   keys, values, title, unit = '', height = 130, digits = 0, refs = [], highlightIndex = null,
+  series = null,
 }) {
   const box = frame(height);
   const { min, max } = bounds(values, { fromZero: true, include: refs.map((r) => r.value) });
@@ -223,7 +258,7 @@ export function barChart({
 
   const svg = svgEl('svg', {
     viewBox: `0 0 ${W} ${height}`,
-    class: 'chart',
+    class: `chart ${seriesClass(series)}`,
     role: 'img',
     'aria-label': title,
   });
@@ -262,7 +297,7 @@ export function barChart({
  * tatsächliche Frage lautet "steigt mein Schultervolumen?" — die beantwortet
  * ein eigener Verlauf besser als ein Segment in einem Stapel.
  */
-export function sparkBars({ label, values, unit = 'Sätze' }) {
+export function sparkBars({ label, values, unit = 'Sätze', series = 'volume' }) {
   const h = 42;
   const w = 88;
   const max = Math.max(...values.filter(isNum), 1);
@@ -270,7 +305,7 @@ export function sparkBars({ label, values, unit = 'Sätze' }) {
   const lastIndex = values.length - 1;
   const svg = svgEl('svg', {
     viewBox: `0 0 ${w} ${h}`,
-    class: 'spark',
+    class: `spark ${seriesClass(series)}`,
     role: 'img',
     'aria-label': `${label}: ${values.map((v) => dec(v, 1)).join(', ')} ${unit}`,
   });
@@ -321,8 +356,12 @@ export function sparkBars({ label, values, unit = 'Sätze' }) {
  * Nicht als Zugabe, sondern als Pflicht: wer die Grafik nicht lesen kann —
  * aus welchem Grund auch immer — bekommt dieselben Daten als Zahlen.
  */
-export function chartTable(keys, columns) {
-  return el('details', { class: 'reveal reveal--table' },
+export function chartTable(keys, columns, keep = null) {
+  return el('details', {
+    class: 'reveal reveal--table',
+    // Damit die Tabelle beim Neuzeichnen offen bleibt (siehe js/app.js).
+    dataset: keep ? { keep: `table-${keep}` } : undefined,
+  },
     el('summary', null, el('span', { text: 'Zahlen dazu' })),
     el('div', { class: 'reveal__body' },
       el('div', { class: 'table-wrap' },

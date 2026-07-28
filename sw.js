@@ -22,9 +22,16 @@
  *   v7  Trefferflächen der Kopfzeile auf 44 px
  *   v8  Trainingsplan ohne Schwerpunkt, Oberkörper gleichmäßig
  *   v9  Donnerstag: Rumpfübung raus, dritte Bizepsübung rein
+ *   v10 Großer Umbau: Push/Pull/Beintag, Check-in mit 4 Fragen im Fenster,
+ *       Trainingsuhr mit Satzpause, Tage verschieben, Yazio-Wochenschnitt,
+ *       Monats-Review mit zehn Fragen, buntes Farbsystem
+ *   v11 Satzzahlen folgen wieder dem Plan (die Bereitschaft rät nur),
+ *       Heute ohne Beine- und Makrokarte, Essen und Trends in Abschnitten,
+ *       Review kurz mit Stichpunkten, Monatsdatei-Export und Rückmeldung
+ *   v12 Die App blickt nicht vor den ersten erfassten Monat zurück
  */
 
-const CACHE_VERSION = 'v9';
+const CACHE_VERSION = 'v12';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -36,29 +43,35 @@ const PRECACHE = [
   './css/components.css',
   './js/app.js',
   './js/store.js',
+  './js/lib/aggregate.js',
+  './js/lib/archive.js',
   './js/lib/dates.js',
   './js/lib/energy.js',
   './js/lib/planner.js',
   './js/lib/readiness.js',
+  './js/lib/review.js',
+  './js/lib/schedule.js',
   './js/lib/state.js',
   './js/lib/volume.js',
+  './js/lib/weekly.js',
   './data/exercises.js',
   './data/plan-default.js',
+  './js/views/archive.js',
+  './js/views/chart.js',
   './js/views/checkin.js',
+  './js/views/clock.js',
   './js/views/dom.js',
+  './js/views/gauge.js',
+  './js/views/nutrition.js',
   './js/views/onboarding.js',
+  './js/views/placeholder.js',
+  './js/views/profile.js',
+  './js/views/review.js',
+  './js/views/session.js',
+  './js/views/sheet.js',
   './js/views/today.js',
   './js/views/training.js',
-  './js/views/profile.js',
-  './js/lib/aggregate.js',
-  './js/views/nutrition.js',
   './js/views/trends.js',
-  './js/views/chart.js',
-  './js/lib/review.js',
-  './js/lib/archive.js',
-  './js/views/review.js',
-  './js/views/archive.js',
-  './js/views/placeholder.js',
   './fonts/barlow-condensed-600-latin.woff2',
   './fonts/inter-var-latin.woff2',
   './icons/icon-192.png',

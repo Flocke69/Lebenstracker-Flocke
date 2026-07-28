@@ -10,6 +10,11 @@
  * ausblendet. Es steht bewusst hier an der Übung und nicht im Plan: eine
  * Übung belastet die Beine oder nicht, unabhängig davon, in welcher Einheit
  * sie auftaucht.
+ *
+ * DER KATALOG IST GRÖSSER ALS DER PLAN. Übungen, die aus dem Plan gefallen
+ * sind, bleiben hier stehen — sonst würde `exercise()` bei alten geloggten
+ * Sätzen werfen und ein Monat Trainingsdaten wäre nicht mehr auswertbar.
+ * Nichts aus diesem Katalog löschen, solange es Logs geben kann.
  */
 
 export const MUSCLE_GROUPS = Object.freeze({
@@ -84,11 +89,47 @@ export const EXERCISES = Object.freeze({
     note: 'Über Kopf, weil der lange Trizepskopf nur in der Dehnung richtig arbeitet.',
   },
   triceps_pushdown: {
-    name: 'Trizeps-Drücken',
+    name: 'Trizepsdrücken',
     variant: 'Kabel, Seil',
     primary: 'triceps',
     secondary: [],
     loadsLegs: false,
+  },
+  triceps_pushdown_single: {
+    name: 'Trizepsdrücken einarmig',
+    variant: 'Kabel, einarmig',
+    primary: 'triceps',
+    secondary: [],
+    loadsLegs: false,
+    note: 'Einarmig, weil beide Seiten sonst unbemerkt unterschiedlich stark '
+        + 'werden. Oberarm bleibt am Körper, nur der Unterarm bewegt sich.',
+  },
+  chest_fly_db: {
+    name: 'Fliegende',
+    variant: 'Kurzhantel',
+    primary: 'chest',
+    secondary: [],
+    loadsLegs: false,
+    note: 'Der Reiz kommt aus der Dehnung, nicht aus dem Gewicht. Leicht '
+        + 'beginnen, Ellenbogen leicht gebeugt lassen.',
+  },
+  incline_press_multi: {
+    name: 'Schrägbankdrücken',
+    variant: 'Multipresse, 30 Grad',
+    primary: 'chest',
+    secondary: ['shoulders', 'triceps'],
+    loadsLegs: false,
+    note: 'In der Multipresse geführt — deshalb geht hier schwerer als mit '
+        + 'freien Kurzhanteln, ohne dass jemand sichern muss.',
+  },
+  lateral_raise_machine: {
+    name: 'Seitheben',
+    variant: 'Maschine',
+    primary: 'shoulders',
+    secondary: [],
+    loadsLegs: false,
+    note: 'Die Maschine nimmt den Schwung raus, den man beim Seitheben mit '
+        + 'Kurzhanteln fast zwangsläufig mitnimmt.',
   },
 
   /* ─── Ziehen ─────────────────────────────────────────────────────────── */
@@ -116,6 +157,26 @@ export const EXERCISES = Object.freeze({
     primary: 'back',
     secondary: ['biceps'],
     loadsLegs: false,
+  },
+  row_wide: {
+    name: 'Breites Rudern',
+    variant: 'Maschine oder Kabel, weiter Griff',
+    primary: 'back',
+    secondary: ['biceps'],
+    loadsLegs: false,
+    note: 'Weiter Griff und Ellenbogen nach außen — das trifft die Breite des '
+        + 'Rückens, während enges Rudern eher in die Dicke geht.',
+  },
+  row_bb: {
+    name: 'Rudern',
+    variant: 'Langhantel, vorgebeugt',
+    primary: 'back',
+    // Die Beine halten hier nur, sie arbeiten nicht — deshalb kein
+    // Beinvolumen und loadsLegs bleibt false.
+    secondary: ['biceps', 'traps'],
+    loadsLegs: false,
+    note: 'Die schwerste Zugübung im Plan. Rücken gerade, Hüfte fest — wenn '
+        + 'der Oberkörper mitschwingt, ist das Gewicht zu hoch.',
   },
   face_pull: {
     name: 'Face Pulls',
@@ -150,6 +211,15 @@ export const EXERCISES = Object.freeze({
         + 'voller Dehnung. Das ist ein anderer Reiz als stehende Curls, deshalb '
         + 'steht die Übung an einem anderen Tag.',
   },
+  curl_cable: {
+    name: 'Bizepscurls',
+    variant: 'Kabel',
+    primary: 'biceps',
+    secondary: [],
+    loadsLegs: false,
+    note: 'Am Kabel bleibt die Spannung über den ganzen Weg gleich — mit der '
+        + 'Kurzhantel wird es oben leicht. Deshalb hier das Kabel.',
+  },
 
   /* ─── Beine ──────────────────────────────────────────────────────────── */
 
@@ -161,6 +231,35 @@ export const EXERCISES = Object.freeze({
     loadsLegs: true,
     note: 'Die wichtigste Übung im Plan für deine Verletzungsprophylaxe. Hüfte nach hinten, '
         + 'Rücken gerade, Stange nah am Bein. Nicht bis zum Boden — bis die Dehnung kommt.',
+  },
+  rdl_db: {
+    name: 'Rumänisches Kreuzheben',
+    variant: 'Kurzhantel',
+    primary: 'hamstrings',
+    secondary: ['glutes', 'back'],
+    loadsLegs: true,
+    note: 'Die wichtigste Übung im Plan gegen Oberschenkelverletzungen — die '
+        + 'häufigste Ausfallursache im Amateurfußball. Hüfte nach hinten, '
+        + 'Rücken gerade, Hanteln nah am Bein. Nicht bis zum Boden, sondern '
+        + 'bis die Dehnung hinten kommt.',
+  },
+  leg_extension: {
+    name: 'Beinstrecker',
+    variant: 'Maschine',
+    primary: 'quads',
+    secondary: [],
+    loadsLegs: true,
+    note: 'Die einzige Übung, die den Oberschenkel vorne isoliert trifft. '
+        + 'Oben kurz halten, nicht in die Endstellung schnalzen.',
+  },
+  adductor_machine: {
+    name: 'Adduktoren',
+    variant: 'Maschine, Beine zusammen',
+    primary: 'adductors',
+    secondary: [],
+    loadsLegs: true,
+    note: 'Adduktorenzerrung ist nach der Oberschenkelverletzung die Nummer zwei '
+        + 'im Amateurfußball. Zwei Sätze pro Woche kosten fünf Minuten.',
   },
   split_squat_bulgarian: {
     name: 'Bulgarische Kniebeuge',

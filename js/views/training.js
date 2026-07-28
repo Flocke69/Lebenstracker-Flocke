@@ -1,219 +1,183 @@
-/* Training — Plan anzeigen und Sätze loggen.
+/* Training — die drei Einheiten auf einem Screen.
  *
- * Zwei Dinge machen den Unterschied zwischen einem Logger, den man benutzt,
- * und einem, den man nach zwei Wochen liegen lässt:
+ * Flockes Vorgabe: hier stehen ALLE DREI Einheiten, nicht nur die von heute.
+ * Der Grund ist praktisch — man will wissen, was in der Woche noch kommt, und
+ * man will eine Einheit auch dann öffnen können, wenn sie eigentlich morgen
+ * dran wäre.
  *
- *   1. "Letztes Mal" steht DIREKT an der Übung. Ohne das ist Progression
- *      Ratespiel — niemand erinnert sich an das Gewicht von vor einer Woche.
- *   2. Eintippen ohne Zwischenschritte. Zwei Felder pro Satz, sofort
- *      gespeichert, kein Absenden.
- *
- * Gesperrte Übungen werden nicht ausgeblendet, sondern durchgestrichen mit
- * Begründung. Verschwundene Übungen wirken wie ein Fehler; durchgestrichene
- * erklären sich selbst.
+ * Was hier NICHT passiert: loggen. Die Sätze trägt man im Trainingsfenster
+ * ein (js/views/session.js), das der Startknopf öffnet. Zwei Orte für dieselbe
+ * Eingabe wären zwei Orte, die auseinanderlaufen.
  */
 
-import { todayKey, weekdayOf, formatDayShort, WEEKDAYS_LONG } from '../lib/dates.js';
-import { getSets, lastPerformance, dayTypeFor } from '../lib/state.js';
+import { todayKey, WEEKDAYS_LONG, formatDayShort, weekdayOf } from '../lib/dates.js';
+import { getDay, getSession, sessionMinutes } from '../lib/state.js';
+import { weekPlan, sessionForDay } from '../lib/schedule.js';
 import { legVolumeAllowance, exerciseBlockReason } from '../lib/planner.js';
 import { readinessScore, trainingGuidance } from '../lib/readiness.js';
-import { getDay } from '../lib/state.js';
-import { DAY_TYPE_LABELS } from '../lib/energy.js';
-import { totalSets } from '../lib/volume.js';
-import { EXERCISES, exercise } from '../../data/exercises.js';
-import { PLAN, sessionForWeekday, sessionExercises } from '../../data/plan-default.js';
-import { el, card, decimalInput, parseDecimal, toInputValue, dec, kg } from './dom.js';
+import { totalSets, plannedSetsPerMuscle, setsPerMuscle } from '../lib/volume.js';
+import { EXERCISES, MUSCLE_GROUPS, exercise } from '../../data/exercises.js';
+import { PLAN, SESSIONS, sessionExercises, plannedSets } from '../../data/plan-default.js';
+import { openSession } from './session.js';
+import { el, card, dec, setCount } from './dom.js';
 
-/* Die Regel selbst liegt in lib/planner.js und ist dort getestet. Hier wird
-   nur der Katalog danebengelegt. */
-function blockReason(entry, legLevel) {
-  return exerciseBlockReason(
-    { loadsLegs: EXERCISES[entry.id].loadsLegs, prophylaxis: entry.prophylaxis },
-    legLevel
-  );
+/** Farbe je Einheit — dieselbe Reihenfolge wie im Plan, überall gleich. */
+const SESSION_TONE = { 'a-push': 'push', 'b-pull': 'pull', 'c-legs': 'legs' };
+
+/* ─── Zustand einer Einheit in dieser Woche ──────────────────────────────── */
+
+function statusOf(state, entry) {
+  const { session, dayKey } = entry;
+  if (!dayKey) return { key: 'none', word: 'kein Tag', tone: 'idle' };
+
+  const logged = getSession(state, dayKey, session.id);
+  const done = totalSets(logged ? [logged] : []);
+  const today = todayKey();
+
+  if (logged?.startedAt && !logged.endedAt) return { key: 'running', word: 'läuft', tone: 'ok' };
+  if (done > 0) {
+    return { key: 'done', word: `${setCount(done)} geloggt`, tone: 'good' };
+  }
+  if (dayKey === today) return { key: 'today', word: 'heute dran', tone: 'ok' };
+  if (dayKey < today) return { key: 'missed', word: 'ausgelassen', tone: 'bad' };
+  return { key: 'ahead', word: WEEKDAYS_LONG[weekdayOf(dayKey)], tone: 'idle' };
 }
 
-/* ─── Satzzeilen ─────────────────────────────────────────────────────────── */
+/* ─── Karte je Einheit ───────────────────────────────────────────────────── */
 
-function setRow(store, dayKey, planId, exId, index, set, unit) {
-  const done = Boolean(set && set.reps !== null && set.reps !== undefined);
+function sessionCard(store, state, entry) {
+  const { session, dayKey, isMoved } = entry;
+  const status = statusOf(state, entry);
+  const today = todayKey();
+  const openKey = dayKey ?? today;
 
-  const write = (field) => (event) => {
-    const value = parseDecimal(event.target.value);
-    try {
-      store.setSet(dayKey, planId, exId, index, { [field]: value });
-    } catch (err) {
-      event.target.value = '';
-      console.warn('[training]', err.message);
-    }
-  };
+  const logged = getSession(state, openKey, session.id);
+  const minutes = sessionMinutes(logged ?? {}, Date.now());
 
-  return el('div', { class: `setrow${done ? ' setrow--done' : ''}` },
-    el('span', { class: 'setrow__index', text: String(index + 1) }),
-    decimalInput({
-      value: toInputValue(set?.reps ?? null),
-      placeholder: unit === 'Sekunden' ? 'Sek.' : 'Wdh.',
-      'aria-label': `Satz ${index + 1}, Wiederholungen`,
-      onchange: write('reps'),
-    }),
-    decimalInput({
-      value: toInputValue(set?.kg ?? null),
-      placeholder: 'kg',
-      'aria-label': `Satz ${index + 1}, Gewicht in Kilogramm`,
-      onchange: write('kg'),
+  /* Die Sperre wird für den TAG DER EINHEIT gerechnet, nicht für heute. Sonst
+     stünde am Sonntag an jeder Beinübung "gesperrt", obwohl die Einheit am
+     Donnerstag liegt. Die Bereitschaft geht hier NICHT ein: in der Übersicht
+     steht der Plan, nicht die Tagesform. */
+  const allowance = legVolumeAllowance(openKey, {
+    matchDayWeekday: state.profile.matchDayWeekday,
+    teamTrainingWeekdays: state.profile.teamTrainingWeekdays ?? [],
+  });
+  const guidance = trainingGuidance(
+    readinessScore(getDay(state, openKey).checkin), allowance
+  );
+
+  const rows = sessionExercises(session).map((e) => {
+    const ex = exercise(e.id);
+    const blocked = exerciseBlockReason(
+      { loadsLegs: EXERCISES[e.id].loadsLegs, prophylaxis: e.prophylaxis },
+      guidance.legLevel
+    );
+    return el('li', { class: `exlist__row${blocked ? ' exlist__row--blocked' : ''}` },
+      el('span', { class: 'exlist__name' },
+        ex.name,
+        ex.variant ? el('span', { class: 'exlist__variant', text: ` ${ex.variant}` }) : null),
+      el('span', { class: 'exlist__target', text: `${e.sets}×${e.repsMin}–${e.repsMax}` }));
+  });
+
+  return el('div', { class: `card card--session card--${SESSION_TONE[session.id] ?? 'idle'}` },
+    el('div', { class: 'card__head' },
+      el('span', { class: 'eyebrow', text: dayKey ? WEEKDAYS_LONG[weekdayOf(dayKey)] : 'ohne Tag' }),
+      el('span', { class: `chip chip--${status.tone}`, text: status.word })),
+
+    el('div', { class: 'session-card__title' },
+      el('span', { class: 'session-card__name', text: session.name }),
+      el('span', { class: 'session-card__sets', text: `${plannedSets(session)} Sätze` })),
+    el('p', { class: 'session-card__focus', text: session.focus }),
+
+    isMoved
+      ? el('p', { class: 'card__note', text: `Diese Woche verschoben auf ${formatDayShort(dayKey)}.` })
+      : null,
+
+    el('ul', { class: 'exlist' }, rows),
+
+    minutes !== null && status.key === 'done'
+      ? el('p', { class: 'card__note', text: `Gedauert hat es ${Math.round(minutes)} Minuten.` })
+      : null,
+
+    el('button', {
+      type: 'button',
+      class: `btn btn--block${status.key === 'today' || status.key === 'running' ? ' btn--primary' : ''}`,
+      text: status.key === 'running' ? 'weiterführen'
+        : status.key === 'done' ? 'ansehen'
+          : status.key === 'today' ? 'Training starten'
+            : 'öffnen und loggen',
+      onclick: () => openSession(store, openKey, session),
     }));
 }
 
-/* ─── Übung ──────────────────────────────────────────────────────────────── */
+/* ─── Wochenvolumen ──────────────────────────────────────────────────────── */
 
-function lastText(state, dayKey, exId) {
-  const last = lastPerformance(state, dayKey, exId);
-  if (!last) return 'Erstes Mal — trag ein, was du schaffst.';
-  const sets = last.sets
-    .map((s) => (s.kg ? `${dec(s.reps, 0)}×${kg(s.kg)}` : `${dec(s.reps, 0)}`))
-    .join('  ');
-  return `Letztes Mal ${formatDayShort(last.dayKey)} — ${sets}`;
-}
+/**
+ * Geplant gegen geloggt, je Muskelgruppe.
+ *
+ * Zwei Balken übereinander statt einer Zahl: „11 von 14" muss man rechnen,
+ * zwei unterschiedlich lange Balken nicht.
+ */
+function volumeCard(state, anyDayKey) {
+  const planned = plannedSetsPerMuscle(SESSIONS);
+  const keys = weekPlan(state, anyDayKey).map((e) => e.dayKey).filter(Boolean);
+  const sessions = keys.flatMap((key) => getDay(state, key).sessions ?? []);
+  const actual = setsPerMuscle(sessions);
 
-function exerciseCard(store, state, dayKey, planId, entry, setsDelta, legLevel) {
-  const ex = exercise(entry.id);
-  const blocked = blockReason(entry, legLevel);
+  const rows = Object.entries(planned)
+    .filter(([, sets]) => sets > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const max = rows[0]?.[1] ?? 1;
 
-  // Bei niedriger Bereitschaft ein Satz weniger, aber nie unter einen.
-  const plannedSets = Math.max(1, entry.sets + (blocked ? 0 : setsDelta));
-  const logged = getSets(state, dayKey, planId, entry.id);
-  const rowCount = Math.max(plannedSets, logged.length);
-
-  const target = `${plannedSets} × ${entry.repsMin}–${entry.repsMax}`
-    + (entry.unit === 'Sekunden' ? ' Sek.' : '')
-    + ` @ RPE ${entry.rpe}`;
-
-  return el('div', { class: `exercise${blocked ? ' exercise--blocked' : ''}` },
-    el('div', { class: 'card__head' },
-      el('span', null,
-        el('span', { class: 'exercise__name', text: ex.name }),
-        ex.variant ? el('span', { class: 'exercise__variant', text: ` ${ex.variant}` }) : null),
-      el('span', { class: 'exercise__target', text: target })),
-
-    blocked
-      ? el('p', { class: 'exercise__last', text: blocked })
-      : el('p', { class: 'exercise__last', text: lastText(state, dayKey, entry.id) }),
-
-    blocked ? null : el('div', null,
-      el('div', { class: 'setrow__head' },
-        el('span', { text: '' }),
-        el('span', { text: entry.unit === 'Sekunden' ? 'Sekunden' : 'Wdh.' }),
-        el('span', { text: 'kg' })),
-      Array.from({ length: rowCount }, (_, i) =>
-        setRow(store, dayKey, planId, entry.id, i, logged[i] ?? null, entry.unit))),
-
-    entry.goal ? el('p', { class: 'exercise__note', text: entry.goal }) : null,
-    ex.note && !blocked ? el('p', { class: 'exercise__note', text: ex.note }) : null);
-}
-
-/* ─── Kein Trainingstag ──────────────────────────────────────────────────── */
-
-function noSessionToday(state, dayKey) {
-  const dayType = dayTypeFor(state, dayKey);
-  const weekday = weekdayOf(dayKey);
-
-  const messages = {
-    match: 'Spieltag. Heute gehört alles dem Spiel.',
-    team: 'Mannschaftstraining. Das ist dein Training für heute.',
-    rest: 'Kein Gym heute — Ruhetag.',
-    gym: 'Für diesen Wochentag steht keine Einheit im Plan.',
-  };
-
-  const nextDays = [1, 2, 3, 4, 5, 6, 7]
-    .map((offset) => (weekday + offset) % 7)
-    .map((wd) => ({ wd, session: sessionForWeekday(wd) }))
-    .filter((x) => x.session);
-  const next = nextDays[0];
-
-  return el('div', { class: 'view' },
-    el('h1', { text: 'Training' }),
-    card('Heute',
-      el('span', { class: 'chip', text: DAY_TYPE_LABELS[dayType] }),
-      el('p', { text: messages[dayType] }),
-      next
-        ? el('p', { class: 'card__note' },
-          `Nächste Einheit: ${WEEKDAYS_LONG[next.wd]} — ${next.session.name} `
-          + `(${next.session.focus}).`)
-        : null),
-    planOverview());
-}
-
-/* ─── Planübersicht ──────────────────────────────────────────────────────── */
-
-function planOverview() {
-  return card('Dein Plan',
-    el('span', { class: 'chip', text: `${PLAN.blockWeeks} Wochen` }),
-    el('ul', null,
-      PLAN.sessions.map((s) =>
-        el('li', null,
-          el('strong', { text: `${WEEKDAYS_LONG[s.weekday]}: ${s.name}` }),
-          ` — ${s.focus}, ${sessionExercises(s).length} Übungen`))),
-    el('p', { class: 'card__note' }, PLAN.progression.description,
-      ` Woche ${PLAN.progression.deloadWeek} ist Deload: ein Satz weniger, RPE höchstens `,
-      `${PLAN.progression.deloadRpeCap}.`));
+  return card('Wochenvolumen',
+    el('span', { class: 'chip', text: 'geplant gegen geloggt' }),
+    rows.map(([key, plan]) => {
+      const done = actual[key] ?? 0;
+      const ratio = plan > 0 ? done / plan : 0;
+      const tone = ratio >= 0.9 ? 'good' : ratio >= 0.5 ? 'ok' : 'bad';
+      return el('div', { class: 'vol' },
+        el('div', { class: 'vol__head' },
+          el('span', { class: 'vol__name', text: MUSCLE_GROUPS[key] }),
+          el('span', { class: 'vol__value' },
+            el('b', { class: `vol__done vol__done--${tone}`, text: dec(done, 1) }),
+            ` von ${dec(plan, 1)}`)),
+        el('div', { class: 'vol__track' },
+          el('div', { class: 'vol__plan', style: `width: ${((plan / max) * 100).toFixed(1)}%` },
+            el('div', {
+              class: `vol__fill vol__fill--${tone}`,
+              style: `width: ${(Math.min(ratio, 1) * 100).toFixed(1)}%`,
+            }))));
+    }),
+    el('p', { class: 'card__note' },
+      'Eine Hauptmuskelgruppe zählt einen Satz, eine Nebengruppe einen halben. ',
+      'Gezählt wird nur, was tatsächlich geloggt ist.'));
 }
 
 /* ─── Zusammenbau ────────────────────────────────────────────────────────── */
 
 export function render({ store }) {
   const state = store.getState();
-  const dayKey = todayKey();
-  const session = sessionForWeekday(weekdayOf(dayKey));
-
-  if (!session) return noSessionToday(state, dayKey);
-
-  const allowance = legVolumeAllowance(dayKey, {
-    matchDayWeekday: state.profile.matchDayWeekday,
-    teamTrainingWeekdays: state.profile.teamTrainingWeekdays ?? [],
-  });
-  const readiness = readinessScore(getDay(state, dayKey).checkin);
-  const guidance = trainingGuidance(readiness, allowance);
-
-  const entries = sessionExercises(session);
-  const plannedTotal = entries.reduce((sum, e) => {
-    const blocked = blockReason(e, guidance.legLevel);
-    return sum + (blocked ? 0 : Math.max(1, e.sets + guidance.setsDelta));
-  }, 0);
-  const doneTotal = totalSets(getDay(state, dayKey).sessions);
+  const today = todayKey();
+  const plan = weekPlan(state, today);
+  const todaysSession = sessionForDay(state, today);
 
   return el('div', { class: 'view' },
-    el('h1', { text: session.name }),
-    el('p', { class: 'session__intro', text: session.intro }),
+    el('h1', { text: 'Training' }),
+    el('p', { class: 'field__hint' },
+      todaysSession
+        ? `Heute: ${todaysSession.name}. Antippen und loggen.`
+        : 'Heute steht keine Krafteinheit an.'),
+    el('div', { style: 'height: var(--space-4)' }),
 
-    el('div', { class: 'session__progress' },
-      el('b', { text: `${doneTotal}/${plannedTotal}` }),
-      el('span', { class: 'stat__label', text: 'Sätze erledigt' })),
+    plan.map((entry) => sessionCard(store, state, entry)),
 
-    readiness.score === null
-      ? el('div', { class: 'notice notice--warn' },
-        el('span', { class: 'notice__title', text: 'Check-in fehlt' }),
-        'Ohne Check-in trainierst du nach Plan. Trag ihn im Reiter Heute ein, '
-        + 'dann passt die App das Volumen an.')
-      : guidance.setsDelta !== 0
-        ? el('div', { class: 'notice notice--warn' },
-          el('span', { class: 'notice__title', text: guidance.headline }),
-          `${guidance.detail} Deshalb heute `
-          + `${Math.abs(guidance.setsDelta)} Satz${Math.abs(guidance.setsDelta) === 1 ? '' : 'e'} `
-          + `weniger pro Übung, RPE höchstens ${guidance.rpeCap}.`)
-        : null,
+    volumeCard(state, today),
 
-    session.blocks.map((block) =>
-      el('div', { class: 'block' },
-        el('div', { class: 'block__title' },
-          el('span', { class: 'block__name', text: block.name }),
-          block.prophylaxis
-            ? el('span', { class: 'chip', text: 'schützt die Saison' })
-            : null),
-        block.intro ? el('p', { class: 'block__intro', text: block.intro }) : null,
-        block.exercises.map((e) =>
-          exerciseCard(
-            store, state, dayKey, session.id,
-            { ...e, prophylaxis: Boolean(block.prophylaxis) },
-            guidance.setsDelta, guidance.legLevel
-          )))));
+    card('Progression',
+      el('span', { class: 'chip', text: `${PLAN.blockWeeks} Wochen` }),
+      el('p', { text: PLAN.progression.description }),
+      el('p', { class: 'card__note' },
+        `Woche ${PLAN.progression.deloadWeek} ist Deload: ein Satz weniger, RPE `,
+        `höchstens ${PLAN.progression.deloadRpeCap}. RPE 8 heißt: zwei `,
+        'Wiederholungen wären noch gegangen.')));
 }

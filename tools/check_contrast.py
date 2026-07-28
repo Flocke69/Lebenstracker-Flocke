@@ -27,59 +27,91 @@ SURFACES = {
 TEXT = {
     "--chalk-100": "#EDF1EC",     # Primärtext
     "--chalk-500": "#8A968D",     # Labels, Sekundärtext
-    "--sodium-500": "#FF8A1F",    # Signaltext
-    "--redcard-500": "#F53B5C",   # Alarmtext ("Ruhetag")
+    "--sodium-500": "#FF8A1F",    # Bedienelemente, "jetzt dran"
+    "--good-500": "#6EE7B7",      # Statuswort "gut"
+    "--ok-500": "#FBBF24",        # Statuswort "geht so"
+    "--bad-500": "#FF4D6D",       # Statuswort "schlecht"
 }
 
 # Marken in Charts: Grafik, nicht Text → Grenze 3:1.
 #
 # --data-500 ist ein reines Grafik-Token und steht bewusst NICHT in TEXT:
-# es trägt niemals Schrift. Regel der dataviz-Richtlinie: Text trägt
-# Text-Token, nie die Serienfarbe.
-#
-# --redcard-500 steht bewusst NICHT hier. Begründung siehe USAGE_RULES:
-# gegen --data-500 kollabiert es bei Protanopie auf ΔE 3.7 (Rot-Grün-
-# Zusammenfall). Charts benutzen ausschließlich die drei Marken unten.
+# es trägt niemals Schrift.
 MARKS = {
     "--chalk-100": "#EDF1EC",
     "--chalk-500": "#8A968D",
-    "--data-500": "#63796F",      # recessive Balken und Marken
+    "--data-500": "#63796F",      # ruhende Balken
     "--sodium-500": "#FF8A1F",    # hervorgehobener Wert
+    "--c-weight": "#38BDF8",      # Gewicht
+    "--c-sleep": "#D8B4FE",       # Schlaf
+    "--c-ready": "#6EE7B7",       # Bereitschaft
+    "--c-kcal": "#FB923C",        # Kalorien
+    "--c-protein": "#F472B6",     # Protein
+    "--c-volume": "#FACC15",      # Trainingsvolumen
+    "--m-protein": "#F472B6",     # Makro-Balken Protein
+    "--m-carbs": "#22D3EE",       # Makro-Balken Kohlenhydrate
+    "--m-fat": "#FACC15",         # Makro-Balken Fett
 }
+
+# Die kategorialen Farben stehen NIE zwei in einem Bild — jeder Chart trägt
+# genau eine Messgröße und einen Titel. Ihr Abstand wird deshalb berichtet,
+# aber nicht erzwungen: fällt ein Paar bei Farbfehlsichtigkeit zusammen,
+# stehen die beiden Werte trotzdem in verschiedenen, benannten Karten.
+#
+# Was DOCH erzwungen wird, steht in SIGNAL_PAIRS: alles, was direkt
+# nebeneinander liegt und seine Bedeutung aus der Farbe zieht.
+CATEGORY = ["--c-weight", "--c-sleep", "--c-ready", "--c-kcal",
+            "--c-protein", "--c-volume"]
 
 # Nutzungsregeln, auf denen dieser Bericht beruht. Sie sind Teil der
 # Prüfung: wird eine davon im Code gebrochen, ist der Bericht ungültig.
 USAGE_RULES = [
-    "Charts benutzen nur --chalk-100, --chalk-500, --data-500 und "
-    "--sodium-500. --redcard-500 kommt in keinem Chart vor.",
+    "Statusfarbe ist dreistufig: --good-500 / --ok-500 / --bad-500. Keine "
+    "vierte Zwischenstufe — drei Stufen liest man aus dem Augenwinkel, "
+    "fünf nicht.",
+
+    "Jeder Zustand trägt immer ein Wort (\"Alles gut\" / \"Geht so\" / "
+    "\"Schlecht\") — nie Farbe allein. Farbe beschleunigt das Erkennen, "
+    "sie trägt die Information nicht.",
+
+    "Die kategorialen Farben --c-… gehören je einer MESSGRÖSSE, nicht "
+    "einem Zustand: Gewicht ist überall blau, Schlaf überall violett. "
+    "Ein Chart trägt nie zwei Kategorien in einem Bild.",
 
     "Schwellenwerte (Schlaf 6,5 h, Bereitschaft 50 und 75) werden als "
     "Referenzlinie gezeichnet, nicht als Farbe der Marke. Position ist "
     "die robustere Kodierung und funktioniert bei jeder Sehschwäche.",
 
-    "--redcard-500 ist ein Text-Token für den Zustand \"Ruhetag\": große "
-    "Zahl und Statuswort. Auf --pitch-700 nur ab 24px bzw. 19px bold.",
+    "--bad-500 wird in Charts nur für die Statusgrafik der Bereitschaft "
+    "benutzt, die immer ein Wort daneben trägt — nie als Serienfarbe "
+    "gegen --c-ready im selben Bild.",
 
-    "Jeder Zustand trägt immer ein Wort (\"Bereit\" / \"Volumen "
-    "reduziert\" / \"Ruhetag\") — nie Farbe allein.",
-
-    "Flächen unter Linien sind Sodium mit niedriger Deckkraft, keine "
-    "eigene Kategorie.",
+    "Flächen unter Linien sind dieselbe Hue mit niedriger Deckkraft, "
+    "keine eigene Kategorie.",
 ]
 
 # Paare, die im UI direkt nebeneinander Bedeutung tragen und daher
 # unterscheidbar sein MÜSSEN — auch bei Farbfehlsichtigkeit.
 #
 # Flächenfüllungen unter Linien stehen hier absichtlich nicht drin: eine
-# Fläche ist Hintergrund, keine Kategorie. Sie wird als Sodium mit
-# niedriger Deckkraft gezeichnet (eine Hue, zwei Helligkeitsstufen) und
-# muss deshalb keinen Kategorien-Abstand einhalten.
+# Fläche ist Hintergrund, keine Kategorie. Sie wird als dieselbe Hue mit
+# niedriger Deckkraft gezeichnet und muss deshalb keinen
+# Kategorien-Abstand einhalten.
+#
+# --good-500 gegen --bad-500 steht hier bewusst DRIN, obwohl es ein
+# Rot-Grün-Paar ist: es ist die wichtigste Unterscheidung der App. Fällt
+# es bei Protanopie zusammen, muss das im Bericht stehen — und das Wort
+# daneben ist dann nicht Zugabe, sondern die einzige Kodierung.
 SIGNAL_PAIRS = [
-    ("--chalk-100", "--sodium-500"),     # "Bereit" vs. "Volumen reduziert"
-    ("--sodium-500", "--redcard-500"),   # "Volumen reduziert" vs. "Ruhetag"
-    ("--chalk-100", "--redcard-500"),    # "Bereit" vs. "Ruhetag"
-    ("--data-500", "--sodium-500"),      # normaler vs. hervorgehobener Balken
-    ("--chalk-100", "--data-500"),       # Rohpunkt vs. recessiver Balken
+    ("--good-500", "--bad-500"),         # "Alles gut" vs. "Schlecht"
+    ("--good-500", "--ok-500"),          # "Alles gut" vs. "Geht so"
+    ("--ok-500", "--bad-500"),           # "Geht so" vs. "Schlecht"
+    ("--data-500", "--sodium-500"),      # ruhender vs. aktueller Balken
+    ("--chalk-100", "--data-500"),       # Rohpunkt vs. ruhender Balken
+    # Die drei Makro-Balken liegen direkt übereinander in einer Karte.
+    ("--m-protein", "--m-carbs"),
+    ("--m-protein", "--m-fat"),
+    ("--m-carbs", "--m-fat"),
 ]
 
 ALL = dict(SURFACES)
@@ -260,8 +292,33 @@ def check_pairs():
         print(row + f"   {verdict}")
 
 
+def check_categories():
+    """Abstand der Messgrößen-Farben — Bericht, keine Pflichtprüfung.
+
+    Diese Farben stehen nie zwei in einem Bild. Ein Zusammenfall bei
+    Farbfehlsichtigkeit kostet hier keine Information, weil jede Karte
+    ihren Titel trägt. Die Zahlen stehen trotzdem hier: wer später zwei
+    Messgrößen in EINEN Chart legt, muss vorher hier nachsehen.
+    """
+    head("4 · Abstand der Messgrößen-Farben (informativ, nie im selben Bild)")
+    cols = ["Normal"] + list(CVD.keys())
+    print(f"{'Paar':<30}" + "".join(f"{c:>14}" for c in cols) + "   Hinweis")
+    for i, a in enumerate(CATEGORY):
+        for b in CATEGORY[i + 1:]:
+            ha, hb = ALL[a], ALL[b]
+            normal = delta_e(ha, hb)
+            cvds = {k: delta_e(ha, hb, k) for k in CVD}
+            worst_kind, worst = min(cvds.items(), key=lambda kv: kv[1])
+            note = ("—" if worst >= DELTA_CVD_TARGET
+                    else f"bei {worst_kind} nicht kombinierbar")
+            row = f"{a} / {b}"
+            print(f"{row:<30}{normal:>14.1f}"
+                  + "".join(f"{cvds[k]:>14.1f}" for k in CVD)
+                  + f"   {note}")
+
+
 def show_rules():
-    head("4 · Nutzungsregeln, auf denen dieser Bericht beruht")
+    head("5 · Nutzungsregeln, auf denen dieser Bericht beruht")
     for i, rule in enumerate(USAGE_RULES, 1):
         first, *rest = rule.split("\n")
         print(f"  {i}. {first}")
@@ -275,6 +332,7 @@ def main():
     check_text()
     check_marks()
     check_pairs()
+    check_categories()
     show_rules()
 
     head("Ergebnis")
