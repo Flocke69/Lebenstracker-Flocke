@@ -762,11 +762,18 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--shadow-sheet);
   overflow: hidden;
-  /* Startpunkt der Einblendbewegung und Bezug für das Ziehen. */
-  animation: sheet-in var(--dur-med) var(--ease);
   transition: transform var(--dur-fast) var(--ease), height var(--dur-med) var(--ease);
   /* Der Zug am Griffbalken soll nicht gleichzeitig die Seite scrollen. */
   touch-action: none;
+
+  /* DIE EINBLENDBEWEGUNG DARF DIE POSITION NICHT TRAGEN.
+     Hier stand `from { transform: translateY(100%) }` — eine ganze Fensterhöhe.
+     Läuft die Animation nicht (Tab im Hintergrund, Energiesparmodus, gedrosselte
+     Zeitgeber), bleibt das Fenster auf dem Startbild stehen: komplett unterhalb
+     des Bildschirms. Genau so ist es beim Prüfen der Live-Fassung passiert.
+     Jetzt sind es 14 px. Bleibt die Bewegung stecken, sitzt das Fenster 14 px
+     zu tief — das sieht niemand. Die Ruhelage ist immer die sichtbare. */
+  animation: sheet-in var(--dur-med) var(--ease);
 }
 
 /* Nach oben gezogen oder Griffbalken angetippt: ganze Höhe. */
@@ -776,7 +783,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 }
 
 @keyframes sheet-in {
-  from { transform: translateY(100%); }
+  from { transform: translateY(14px); }
   to { transform: translateY(0); }
 }
 

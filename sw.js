@@ -31,9 +31,10 @@
  *   v12 Die App blickt nicht vor den ersten erfassten Monat zurück
  *   v13 Overlay-Fenster fürs Handy: dialog trägt nur noch die Fläche, das
  *       sichtbare Fenster ist ein Kind darin, der Griffbalken zieht wirklich
+ *   v14 Einblendbewegung trägt nicht mehr die Position des Fensters
  */
 
-const CACHE_VERSION = 'v13';
+const CACHE_VERSION = 'v14';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
