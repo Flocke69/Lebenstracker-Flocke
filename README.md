@@ -136,6 +136,19 @@ ihre Ansicht komplett neu. Läge ein Fenster in diesem Baum, würde die erste Ei
 zerstören. `js/views/sheet.js` hängt es deshalb an `document.body` und zeichnet nur seinen eigenen
 Körper neu — inklusive Scrollposition, sonst springt der Check-in nach jeder Antwort nach oben.
 
+**Das `<dialog>` trägt nichts als die Fläche.** Es ist durchsichtig, füllt den Bildschirm und
+schiebt sein Kind nach unten; alles Sichtbare steckt in `.sheet__panel`. Der Grund ist iOS: der
+Browser gibt einem Dialog eigene Maße (`width: fit-content`, `margin: auto`, ein eigenes
+`max-height`), und wer die überschreibt, gewinnt auf einem Gerät und verliert auf dem anderen.
+Dazu gehört die Zeile `.sheet:not([open]) { display: none }` — Autoren-CSS schlägt die Browserregel,
+und ohne sie wäre ein geschlossener Dialog sichtbar.
+
+**Der Griffbalken zieht wirklich.** Nach unten schließt, nach oben geht auf ganze Höhe, Antippen
+schaltet um. Bewegung und Loslassen hängen am `window`, nicht am Griff: `setPointerCapture` kann
+werfen, und ohne Capture verliert der Zug seinen Empfänger, sobald der Finger den Griff verlässt —
+was er beim Ziehen sofort tut. Das Fenster steht ohnehin auf 88 % Höhe, der Griff ist ein Angebot
+und keine Voraussetzung.
+
 **Trainingsuhr und Satzpause zeichnen nicht neu.** Sie schreiben über `js/views/clock.js` direkt in
 einen Textknoten. Einmal pro Sekunde die Ansicht neu zu zeichnen würde im Trainingsfenster die
 Tastatur wegwerfen und den Fokus verlieren. Die Ticker melden sich selbst ab, sobald ihr Knoten

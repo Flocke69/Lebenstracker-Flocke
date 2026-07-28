@@ -714,42 +714,111 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   overflow: hidden;
 }
 
+/* DER DIALOG TRÄGT NICHTS ALS DIE FLÄCHE.
+   Er ist durchsichtig, füllt den Bildschirm und schiebt sein Kind nach unten.
+   Alles Sichtbare steckt in .sheet__panel. Grund: der Browser gibt einem
+   <dialog> eigene Maße (width: fit-content, margin: auto, eigenes max-height) —
+   auf iOS mit anderem Ergebnis als am Rechner. Wer die dagegen überschreibt,
+   gewinnt auf einem Gerät und verliert auf dem anderen. */
 .sheet {
-  /* Als Sheet von unten: auf dem Handy die einzige Form, die man mit dem
-     Daumen erreicht. Ab Tablet zentriert es sich. */
   position: fixed;
-  inset: auto 0 0 0;
+  inset: 0;
   width: 100%;
-  max-width: var(--content-max);
-  margin: 0 auto;
-  max-height: 92dvh;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  background: var(--pitch-800);
-  color: var(--ink);
   border: 0;
-  border-top: 3px solid var(--line-300);
-  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  box-shadow: var(--shadow-sheet);
+  background: transparent;
+  color: var(--ink);
   overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
 }
 
-.sheet--good { border-top-color: var(--good-500); }
-.sheet--ok { border-top-color: var(--ok-500); }
-.sheet--bad { border-top-color: var(--bad-500); }
+/* MUSS hier stehen: Autoren-CSS schlägt die Browserregel
+   `dialog:not([open]) { display: none }`, egal wie spezifisch die ist. Ohne
+   diese Zeile wäre ein geschlossener Dialog sichtbar. */
+.sheet:not([open]) {
+  display: none;
+}
 
 .sheet::backdrop {
   background: var(--scrim);
 }
 
+/* Das sichtbare Fenster. Hoch genug, dass man nichts hochziehen MUSS — der
+   Griffbalken ist ein Angebot, keine Voraussetzung. */
+.sheet__panel {
+  width: 100%;
+  max-width: var(--content-max);
+  height: 88%;
+  display: flex;
+  flex-direction: column;
+  background: var(--pitch-800);
+  border-top: 3px solid var(--line-300);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  box-shadow: var(--shadow-sheet);
+  overflow: hidden;
+  /* Startpunkt der Einblendbewegung und Bezug für das Ziehen. */
+  animation: sheet-in var(--dur-med) var(--ease);
+  transition: transform var(--dur-fast) var(--ease), height var(--dur-med) var(--ease);
+  /* Der Zug am Griffbalken soll nicht gleichzeitig die Seite scrollen. */
+  touch-action: none;
+}
+
+/* Nach oben gezogen oder Griffbalken angetippt: ganze Höhe. */
+.sheet--full .sheet__panel {
+  height: 100%;
+  border-radius: 0;
+}
+
+@keyframes sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet__panel { animation: none; }
+}
+
+.sheet--good .sheet__panel { border-top-color: var(--good-500); }
+.sheet--ok .sheet__panel { border-top-color: var(--ok-500); }
+.sheet--bad .sheet__panel { border-top-color: var(--bad-500); }
+
+/* Der Griffbalken ist eine echte Trefferfläche: 44 px hoch, auch wenn der
+   Strich darin nur 4 px hat. Ziehen mit dem Daumen trifft sonst daneben. */
 .sheet__grip {
-  width: 40px;
-  height: 4px;
+  flex: none;
+  width: 100%;
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-3) 0 var(--space-1);
+  background: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheet__grip:active {
+  cursor: grabbing;
+  background: var(--pitch-700);
+}
+
+.sheet__grip-bar {
+  display: block;
+  width: 44px;
+  height: 5px;
   border-radius: var(--radius-pill);
   background: var(--line-300);
-  margin: var(--space-3) auto var(--space-1);
-  flex: none;
+}
+
+.sheet__grip:active .sheet__grip-bar {
+  background: var(--chalk-500);
 }
 
 .sheet__head {
@@ -757,9 +826,16 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-4) var(--space-3);
+  padding: var(--space-1) var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--line-200);
   flex: none;
+  /* Auch die Kopfzeile zieht — wie bei jedem Sheet, das man kennt. */
+  cursor: grab;
+  touch-action: none;
+}
+
+.sheet__head-text {
+  min-width: 0;
 }
 
 .sheet__title {
@@ -783,13 +859,22 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   color: var(--ink);
 }
 
+/* Der scrollende Teil. `touch-action: pan-y` holt zurück, was das Panel oben
+   für den Zug abgeschaltet hat — sonst ließe sich der Inhalt nicht scrollen.
+   `overscroll-behavior: contain` verhindert, dass die Seite dahinter
+   mitwandert, wenn man am Ende der Liste weiterzieht. */
 .sheet__body {
   padding: var(--space-4);
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   flex: 1;
+  min-height: 0;
 }
 
+/* Der Abschließen-Knopf klebt unten und bleibt immer erreichbar — auch wenn der
+   Körper lang ist. Der Home-Indicator des iPhones wird eingerechnet. */
 .sheet__foot {
   padding: var(--space-3) var(--space-4) calc(var(--safe-bottom) + var(--space-4));
   border-top: 1px solid var(--line-200);
@@ -798,6 +883,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  touch-action: manipulation;
 }
 
 .sheet__hero {

@@ -29,9 +29,11 @@
  *       Heute ohne Beine- und Makrokarte, Essen und Trends in Abschnitten,
  *       Review kurz mit Stichpunkten, Monatsdatei-Export und Rückmeldung
  *   v12 Die App blickt nicht vor den ersten erfassten Monat zurück
+ *   v13 Overlay-Fenster fürs Handy: dialog trägt nur noch die Fläche, das
+ *       sichtbare Fenster ist ein Kind darin, der Griffbalken zieht wirklich
  */
 
-const CACHE_VERSION = 'v12';
+const CACHE_VERSION = 'v13';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
