@@ -16,7 +16,7 @@
 
 import { monthKey, monthDays, todayKey, addMonths, formatMonth } from './dates.js';
 import { monthSummary } from './aggregate.js';
-import { SCHEMA_VERSION, migrate } from './state.js';
+import { SCHEMA_VERSION, migrate, loggedDayKeys } from './state.js';
 
 /** Format der Exportdatei. Unabhängig von der Schemaversion des Zustands. */
 export const EXPORT_VERSION = 1;
@@ -39,18 +39,19 @@ export function needsRollover(state, today = todayKey()) {
 }
 
 /**
- * Wurde seit dem Monatswechsel exportiert?
+ * Wurde dieser Monat nach seinem Ende exportiert?
  *
  * Ein Export von vor drei Monaten zählt nicht. Maßgeblich ist, ob die Datei
- * NACH dem letzten Tag des abzuschließenden Monats erzeugt wurde.
+ * NACH dem letzten Tag des betreffenden Monats erzeugt wurde. Ohne Angabe
+ * gilt der abzuschließende Monat des Zustands.
  */
-export function hasFreshExport(state) {
+export function hasFreshExport(state, mk = state?.currentMonth) {
   const stamp = state?.lastExportAt;
   if (typeof stamp !== 'string') return false;
   const exported = new Date(stamp);
   if (Number.isNaN(exported.getTime())) return false;
 
-  const days = monthDays(state.currentMonth);
+  const days = monthDays(mk);
   const lastDay = days[days.length - 1];
   const [y, m, d] = lastDay.split('-').map(Number);
   // Ende des letzten Monatstags, lokale Zeit.
@@ -297,7 +298,9 @@ export function exportReminder(state, today = todayKey()) {
   const now = new Date(`${today}T12:00:00`);
 
   if (typeof stamp !== 'string') {
-    const dayCount = Object.keys(state?.days ?? {}).length;
+    /* Nur die Tage des LAUFENDEN Monats zählen: zurückgespielte alte Monate
+       stammen aus einer Sicherung und sind bereits gesichert. */
+    const dayCount = loggedDayKeys(state ?? {}).length;
     return {
       due: dayCount >= EXPORT_REMINDER_DAYS,
       daysSince: null,

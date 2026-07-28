@@ -14,7 +14,7 @@
  * gemacht wurde, taucht hier nicht auf — sonst wäre das Review wertlos.
  */
 
-import { EXERCISES, MUSCLE_GROUPS, SECONDARY_SHARE, exercise } from '../../data/exercises.js';
+import { EXERCISES, MUSCLE_GROUPS, SECONDARY_SHARE } from '../../data/exercises.js';
 import { sessionExercises } from '../../data/plan-default.js';
 
 /** Ein Volumenobjekt mit allen Muskelgruppen auf 0. */
@@ -23,7 +23,12 @@ export function emptyVolume() {
 }
 
 function addExerciseVolume(volume, exId, setCount) {
-  const ex = exercise(exId);
+  /* Tolerant gegenüber unbekannten Kennungen: alte Logs können Übungen
+     tragen, die es im Katalog einer späteren Version nicht mehr gibt. Ein
+     einzelner unbekannter Eintrag darf nicht die ganze Auswertung reißen —
+     er zählt schlicht nicht mit. */
+  const ex = EXERCISES[exId];
+  if (!ex) return volume;
   volume[ex.primary] += setCount;
   for (const secondary of ex.secondary) {
     volume[secondary] += setCount * SECONDARY_SHARE;
@@ -100,19 +105,4 @@ export function sumOf(volume, groups) {
 export function shareOf(volume, groups, reference) {
   const base = sumOf(volume, reference);
   return base === 0 ? 0 : sumOf(volume, groups) / base;
-}
-
-/** Muskelgruppen nach Volumen absteigend — für die Anzeige. */
-export function rankedMuscles(volume) {
-  return Object.entries(volume)
-    .filter(([, sets]) => sets > 0)
-    .sort((a, b) => b[1] - a[1])
-    .map(([key, sets]) => ({ key, label: MUSCLE_GROUPS[key], sets }));
-}
-
-/** Alle Übungen, die eine bestimmte Muskelgruppe treffen. */
-export function exercisesForMuscle(group) {
-  return Object.entries(EXERCISES)
-    .filter(([, ex]) => ex.primary === group || ex.secondary.includes(group))
-    .map(([id]) => id);
 }

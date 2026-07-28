@@ -1,4 +1,4 @@
-import { suite, test, eq, deepEq, isTrue, isFalse, throws } from './harness.js';
+import { suite, test, eq, deepEq, isTrue, isFalse, throws, close } from './harness.js';
 import {
   SCHEMA_VERSION,
   emptyState,
@@ -16,6 +16,9 @@ import {
   getSets,
   withSet,
   withoutSet,
+  withSessionMeta,
+  withStaleSessionsClosed,
+  sessionMinutes,
   lastPerformance,
 } from '../js/lib/state.js';
 
@@ -264,6 +267,90 @@ suite('state — Trainingseinheiten loggen', () => {
     const before = base();
     withSet(before, '2026-07-27', 'a-push', 'ohp_db', 0, { reps: 10, kg: 20 });
     eq(getDay(before, '2026-07-27').sessions.length, 0);
+  });
+});
+
+suite('state — Trainingsuhr', () => {
+  const base = () => withProfile(emptyState('2026-07'), PROFILE);
+
+  test('withSessionMeta legt die Einheit an und trägt den Start ein', () => {
+    const s = withSessionMeta(base(), '2026-07-27', 'a-push',
+      { startedAt: '2026-07-27T18:00:00.000Z' });
+    eq(getSession(s, '2026-07-27', 'a-push').startedAt, '2026-07-27T18:00:00.000Z');
+    eq(getSession(s, '2026-07-27', 'a-push').endedAt, null);
+  });
+
+  test('unlesbare Zeitstempel werden abgewiesen', () => {
+    throws(() => withSessionMeta(base(), '2026-07-27', 'a-push', { startedAt: 'gestern' }));
+    throws(() => withSessionMeta(base(), '2026-07-27', 'a-push', { lastSetAt: 42 }));
+  });
+
+  test('endedAt: null weckt eine beendete Einheit wieder auf', () => {
+    // Ein neuer Satz auf einer beendeten Einheit heißt: es geht doch weiter.
+    let s = withSessionMeta(base(), '2026-07-27', 'a-push', {
+      startedAt: '2026-07-27T18:00:00.000Z',
+      endedAt: '2026-07-27T19:00:00.000Z',
+    });
+    s = withSessionMeta(s, '2026-07-27', 'a-push', { endedAt: null });
+    eq(getSession(s, '2026-07-27', 'a-push').endedAt, null);
+    eq(getSession(s, '2026-07-27', 'a-push').startedAt, '2026-07-27T18:00:00.000Z',
+      'der Start bleibt stehen');
+  });
+
+  test('sessionMinutes rechnet beendete Einheiten aus Start und Ende', () => {
+    const session = {
+      startedAt: '2026-07-27T18:00:00.000Z',
+      endedAt: '2026-07-27T18:45:30.000Z',
+    };
+    close(sessionMinutes(session), 45.5);
+  });
+
+  test('sessionMinutes rechnet laufende Einheiten gegen jetzt', () => {
+    const start = Date.parse('2026-07-27T18:00:00.000Z');
+    const session = { startedAt: '2026-07-27T18:00:00.000Z', endedAt: null };
+    close(sessionMinutes(session, start + 20 * 60000), 20);
+  });
+
+  test('sessionMinutes ohne Start ist null, nicht 0', () => {
+    eq(sessionMinutes({}), null);
+    eq(sessionMinutes({ startedAt: null }), null);
+  });
+
+  test('withStaleSessionsClosed beendet vergessene Einheiten auf den letzten Satz', () => {
+    let s = withSet(base(), '2026-07-25', 'c-legs', 'rdl_db', 0, { reps: 8, kg: 40 });
+    s = withSessionMeta(s, '2026-07-25', 'c-legs', {
+      startedAt: '2026-07-25T18:00:00.000Z',
+      lastSetAt: '2026-07-25T19:10:00.000Z',
+    });
+    s = withStaleSessionsClosed(s, '2026-07-27');
+    const session = getSession(s, '2026-07-25', 'c-legs');
+    eq(session.endedAt, '2026-07-25T19:10:00.000Z', 'der letzte Satz ist das Ende');
+    close(sessionMinutes(session), 70);
+  });
+
+  test('eine vergessene Uhr ohne einen einzigen Satz verschwindet ganz', () => {
+    // Nur geöffnet und nie geloggt: das war kein Training — und darf später
+    // nirgends als Trainingstag auftauchen.
+    let s = withSessionMeta(base(), '2026-07-25', 'c-legs',
+      { startedAt: '2026-07-25T18:00:00.000Z' });
+    s = withStaleSessionsClosed(s, '2026-07-27');
+    eq(getSession(s, '2026-07-25', 'c-legs'), null);
+  });
+
+  test('die laufende Einheit von HEUTE bleibt unangetastet', () => {
+    let s = withSessionMeta(base(), '2026-07-27', 'a-push',
+      { startedAt: '2026-07-27T18:00:00.000Z' });
+    s = withStaleSessionsClosed(s, '2026-07-27');
+    eq(getSession(s, '2026-07-27', 'a-push').endedAt, null, 'heute läuft weiter');
+  });
+
+  test('beendete und satzlose Einheiten lassen den Zustand unverändert', () => {
+    let s = withSessionMeta(base(), '2026-07-25', 'c-legs', {
+      startedAt: '2026-07-25T18:00:00.000Z',
+      endedAt: '2026-07-25T19:00:00.000Z',
+    });
+    eq(withStaleSessionsClosed(s, '2026-07-27'), s,
+      'nichts zu tun → dasselbe Objekt, kein unnötiges Speichern');
   });
 });
 

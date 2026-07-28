@@ -217,14 +217,37 @@ export function withDay(state, key, patch) {
 
 /* ─── Trainingseinheiten ─────────────────────────────────────────────────── */
 
-/** Leere Einheit. `startedAt`/`endedAt` tragen die Trainingsdauer. */
+/** Leere Einheit. `startedAt`/`endedAt` tragen die Trainingsdauer,
+ *  `lastSetAt` den Zeitpunkt des letzten geloggten Satzes. */
 export function emptySession(planId) {
-  return { planId, exercises: [], sessionRpe: null, startedAt: null, endedAt: null };
+  return {
+    planId, exercises: [], sessionRpe: null,
+    startedAt: null, endedAt: null, lastSetAt: null,
+  };
 }
 
 /** Geloggte Einheit zu einer Plan-Kennung, oder null. */
 export function getSession(state, dayKey, planId) {
   return getDay(state, dayKey).sessions.find((s) => s.planId === planId) ?? null;
+}
+
+/** Trägt diese Einheit mindestens einen geloggten Satz? */
+export function hasLoggedSets(session) {
+  return (session?.exercises ?? []).some((e) => (e.sets ?? []).some(Boolean));
+}
+
+/**
+ * Eine Einheit komplett entfernen.
+ *
+ * Für die leeren Hüllen, die der Startknopf anlegt: wer ein Training öffnet
+ * und ohne einen Satz wieder beendet, hat nicht trainiert — und eine Einheit
+ * ohne Sätze würde in Reviews und Archiv trotzdem als Trainingstag zählen.
+ */
+export function withoutSession(state, dayKey, planId) {
+  const day = getDay(state, dayKey);
+  const sessions = day.sessions.filter((s) => s.planId !== planId);
+  if (sessions.length === day.sessions.length) return state;
+  return withDay(state, dayKey, { sessions });
 }
 
 /**
@@ -239,7 +262,7 @@ export function withSessionMeta(state, dayKey, planId, patch) {
   if (!isPlainObject(patch)) {
     throw new TypeError(`Einheiten-Patch muss ein Objekt sein, war: ${patch}`);
   }
-  for (const field of ['startedAt', 'endedAt']) {
+  for (const field of ['startedAt', 'endedAt', 'lastSetAt']) {
     const value = patch[field];
     if (value === undefined || value === null) continue;
     if (typeof value !== 'string' || Number.isNaN(new Date(value).getTime())) {
@@ -273,6 +296,35 @@ export function sessionMinutes(session, now = Date.now()) {
   const end = session.endedAt ? new Date(session.endedAt).getTime() : now;
   if (Number.isNaN(end)) return null;
   return Math.max(0, (end - start) / 60000);
+}
+
+/**
+ * Vergessene Trainingsuhren schließen.
+ *
+ * Das Wegwischen des Trainingsfensters beendet die Einheit NICHT — die Uhr
+ * läuft weiter, damit „weiterführen" die echte Dauer behält. Der Preis: wer
+ * nie auf „Training beenden" tippt, hätte eine ewig laufende Uhr. Deshalb wird
+ * beim App-Start jede laufende Einheit eines VERGANGENEN Tages geschlossen —
+ * rückwirkend auf den letzten geloggten Satz, den ehrlichsten bekannten
+ * Endpunkt. Eine laufende Einheit ganz ohne Sätze war kein Training: sie
+ * verschwindet, statt mit Dauer null als Trainingstag herumzustehen.
+ */
+export function withStaleSessionsClosed(state, today) {
+  parseKey(today);
+  let next = state;
+  for (const [dayKey, day] of Object.entries(state.days ?? {})) {
+    if (dayKey >= today) continue;
+    for (const session of day.sessions ?? []) {
+      if (session.startedAt && !session.endedAt) {
+        next = hasLoggedSets(session)
+          ? withSessionMeta(next, dayKey, session.planId, {
+            endedAt: session.lastSetAt ?? session.startedAt,
+          })
+          : withoutSession(next, dayKey, session.planId);
+      }
+    }
+  }
+  return next;
 }
 
 /** Die geloggten Sätze einer Übung an einem Tag. Nie undefined. */

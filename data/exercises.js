@@ -318,9 +318,6 @@ export const EXERCISES = Object.freeze({
   },
 });
 
-/** Alle Übungs-Kennungen. */
-export const EXERCISE_IDS = Object.freeze(Object.keys(EXERCISES));
-
 /** Übung nachschlagen. Wirft bei unbekannter Kennung, statt undefined zu liefern. */
 export function exercise(id) {
   const found = EXERCISES[id];
@@ -328,10 +325,4 @@ export function exercise(id) {
     throw new RangeError(`Unbekannte Übung "${id}".`);
   }
   return found;
-}
-
-/** Anzeigename inklusive Variante. */
-export function exerciseLabel(id) {
-  const ex = exercise(id);
-  return ex.variant ? `${ex.name} (${ex.variant})` : ex.name;
 }

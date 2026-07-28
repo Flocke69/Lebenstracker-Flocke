@@ -117,11 +117,15 @@ export function render({ store }) {
         el('tbody', null, rows)));
   };
 
-  const legDay = pickLegDay({
-    matchDayWeekday: p.matchDayWeekday,
-    teamTrainingWeekdays: p.teamTrainingWeekdays,
-    gymWeekdays: p.gymWeekdays.length ? p.gymWeekdays : [p.matchDayWeekday === 4 ? 3 : 4],
-  });
+  /* Ohne gewählte Gym-Tage wird KEIN Tag erfunden — der Hinweis unten sagt
+     dann ehrlich, dass es keinen gibt. */
+  const legDay = p.gymWeekdays.length
+    ? pickLegDay({
+      matchDayWeekday: p.matchDayWeekday,
+      teamTrainingWeekdays: p.teamTrainingWeekdays,
+      gymWeekdays: p.gymWeekdays,
+    })
+    : null;
 
   return el('div', { class: 'view' },
     el('h1', { text: 'Profil' }),
@@ -238,9 +242,11 @@ export function render({ store }) {
           patch({ gymWeekdays: [...set] });
         }),
         el('p', { class: 'field__hint' },
-          legDay.weekday === null
-            ? legDay.reason
-            : `Schwere Beinarbeit liegt damit am ${legDay.dayName}.`))),
+          legDay === null
+            ? 'Ohne ausgewählte Gym-Tage plant die App keine Bein-Einheit ein.'
+            : legDay.weekday === null
+              ? legDay.reason
+              : `Schwere Beinarbeit gibt die App damit am ${legDay.dayName} frei.`))),
 
     /* ─── Aktivitätsfaktoren ────────────────────────────────────────────── */
     section('Aktivitätsfaktoren',

@@ -235,8 +235,12 @@ export function moveTargets(state, planId, fromKey, options = {}) {
  * Einheit ausfallen", nicht ein Tag, der alles kaputt macht.
  */
 export function recommendMove(state, planId, fromKey, options = {}) {
+  /* Schwelle ist die VERGANGENHEIT, nicht der belegte Tag: gestern nachtragen
+     geht von Hand (Schritt 7 erlaubt es), aber empfohlen wird es nie — eine
+     Empfehlung zeigt nach vorn. Alles ab dieser Schwelle (Vergangenheit,
+     belegte Tage, Beine ohne Abstand) fällt damit automatisch raus. */
   const targets = moveTargets(state, planId, fromKey, options)
-    .filter((t) => t.possible && t.malus < PENALTY.alreadyTaken);
+    .filter((t) => t.possible && t.malus < PENALTY.inThePast);
   if (targets.length === 0) return null;
 
   const best = targets[0];

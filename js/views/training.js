@@ -40,7 +40,8 @@ function statusOf(state, entry) {
   }
   if (dayKey === today) return { key: 'today', word: 'heute dran', tone: 'ok' };
   if (dayKey < today) return { key: 'missed', word: 'ausgelassen', tone: 'bad' };
-  return { key: 'ahead', word: WEEKDAYS_LONG[weekdayOf(dayKey)], tone: 'idle' };
+  /* Das Datum, nicht der Wochentag — der steht schon im Eyebrow darüber. */
+  return { key: 'ahead', word: formatDayShort(dayKey), tone: 'idle' };
 }
 
 /* ─── Karte je Einheit ───────────────────────────────────────────────────── */
@@ -95,9 +96,13 @@ function sessionCard(store, state, entry) {
 
     el('ul', { class: 'exlist' }, rows),
 
-    minutes !== null && status.key === 'done'
+    /* Unter einer Minute ist keine Auskunft — „0 Minuten" liest sich wie ein
+       Fehler und beschreibt nur ein versehentliches Auf und Zu. */
+    minutes !== null && minutes >= 1 && status.key === 'done'
       ? el('p', { class: 'card__note', text: `Gedauert hat es ${Math.round(minutes)} Minuten.` })
-      : null,
+      : minutes !== null && status.key === 'running'
+        ? el('p', { class: 'card__note', text: `Die Uhr läuft — bisher ${Math.round(minutes)} Minuten.` })
+        : null,
 
     el('button', {
       type: 'button',

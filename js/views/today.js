@@ -312,7 +312,8 @@ function trainingCard(store, state, shownKey) {
   const doneElsewhere = sessionDoneInWeek(state, shownKey, session.id);
   const movedHere = state.schedule?.[shownKey] === session.id;
 
-  const tone = finished || done > 0 ? 'good' : running ? 'ok' : 'idle';
+  /* „läuft" schlägt „fertig": wer weiterloggt, ist nicht fertig. */
+  const tone = running ? 'ok' : finished || done > 0 ? 'good' : 'idle';
 
   return el('div', { class: `card card--tone card--${tone}` },
     el('div', { class: 'card__head' },
@@ -326,10 +327,17 @@ function trainingCard(store, state, shownKey) {
       ? el('p', { class: 'card__note', text: 'Verschoben auf diesen Tag.' })
       : null,
 
-    done > 0
+    done > 0 || running
       ? el('div', { class: 'today__stats' },
-        el('span', null, el('b', { text: String(done) }), ` ${setWord(done)} geloggt`),
-        minutes !== null ? el('span', null, el('b', { text: String(Math.round(minutes)) }), ' Minuten') : null)
+        done > 0
+          ? el('span', null, el('b', { text: String(done) }), ` ${setWord(done)} geloggt`)
+          : null,
+        // Unter einer Minute steht nichts — „0 Minuten" liest sich wie ein Fehler.
+        minutes !== null && (running || minutes >= 1)
+          ? el('span', null,
+            el('b', { text: String(Math.round(minutes)) }),
+            running ? ' Minuten — Uhr läuft' : ' Minuten')
+          : null)
       : null,
 
     el('div', { style: 'height: var(--space-3)' }),

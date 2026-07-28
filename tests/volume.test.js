@@ -1,5 +1,5 @@
 import { suite, test, eq, close, deepEq, isTrue, throws } from './harness.js';
-import { MUSCLE_GROUPS, EXERCISES, SECONDARY_SHARE, exercise, exerciseLabel }
+import { MUSCLE_GROUPS, EXERCISES, SECONDARY_SHARE, exercise }
   from '../data/exercises.js';
 import {
   SESSIONS, PLAN, sessionForWeekday, sessionExercises, sessionById, plannedSets,
@@ -50,7 +50,16 @@ suite('Katalog — innere Stimmigkeit', () => {
 
   test('unbekannte Kennung wirft statt undefined zu liefern', () => {
     throws(() => exercise('kniebeuge_gibts_nicht'));
-    eq(exerciseLabel('rdl_db'), 'Rumänisches Kreuzheben (Kurzhantel)');
+  });
+
+  test('unbekannte Kennungen in alten Logs reißen das Volumen nicht', () => {
+    // Importierte oder uralte Daten können Übungen tragen, die der Katalog
+    // nicht mehr kennt — die Auswertung überspringt sie, statt zu werfen.
+    const volume = setsPerMuscle([{ exercises: [
+      { exId: 'uebung_aus_anderer_version', sets: [{ reps: 10 }] },
+      { exId: 'ohp_db', sets: [{ reps: 10 }] },
+    ] }]);
+    eq(volume.shoulders, 1, 'die bekannte Übung zählt normal');
   });
 
   test('AUS DEM PLAN GEFALLENE ÜBUNGEN BLEIBEN IM KATALOG', () => {
@@ -215,8 +224,12 @@ suite('volume — Zählweise', () => {
     close(v.biceps, 2);
   });
 
-  test('unbekannte Übung wirft', () => {
-    throws(() => setsPerMuscle([{ exercises: [{ exId: 'quatsch', sets: [{ reps: 1, kg: 1 }] }] }]));
+  test('unbekannte Übung wird übersprungen statt zu werfen', () => {
+    // Alte Logs können Übungen tragen, die der Katalog nicht mehr kennt.
+    deepEq(
+      setsPerMuscle([{ exercises: [{ exId: 'quatsch', sets: [{ reps: 1, kg: 1 }] }] }]),
+      emptyVolume()
+    );
   });
 
   test('leere Eingabe ergibt lauter Nullen, nicht undefined', () => {

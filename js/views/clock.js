@@ -110,6 +110,19 @@ export function liveWidth(fraction, props = {}) {
   return node;
 }
 
+/**
+ * Für alles, was weder Text noch Balken ist — z. B. eine Klasse, die
+ * umspringt, wenn die Pause in die Endphase geht. `render` liefert einen
+ * Vergleichswert, `apply` schreibt ihn ans Element. Angewendet wird sofort
+ * und danach nur bei Änderung.
+ */
+export function liveApply(node, render, apply) {
+  const initial = render();
+  apply(node, initial);
+  register({ node, render, apply, last: initial });
+  return node;
+}
+
 /** Sekunden als m:ss — für Pausen. */
 export function formatSeconds(totalSeconds) {
   const s = Math.max(0, Math.round(totalSeconds));
@@ -124,9 +137,4 @@ export function formatDuration(totalSeconds) {
   const sec = s % 60;
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
   return `${m}:${String(sec).padStart(2, '0')}`;
-}
-
-/** Nur für Tests: laufende Ticker zählen. */
-export function tickerCount() {
-  return ticking.size;
 }

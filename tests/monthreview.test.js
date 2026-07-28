@@ -7,6 +7,7 @@ import {
   emptyState, emptyDay, withReviewRecord, getReviewRecord, withWeekMacros,
   withScheduleOverride,
 } from '../js/lib/state.js';
+import { withExportStamp, closeMonth } from '../js/lib/archive.js';
 
 const MONTH = '2026-06';
 
@@ -239,5 +240,28 @@ suite('state — Reviews ablegen', () => {
   test('der ursprüngliche Zustand bleibt unangetastet', () => {
     withReviewRecord(state, record);
     deepEq(state.reviews, []);
+  });
+});
+
+suite('review — nach dem Monatsabschluss', () => {
+  test('das nachgeholte Review zieht die Zahlen aus dem Archiv', () => {
+    /* Der ausdrücklich unterstützte Fall: Monat abgeschlossen (Tage verdichtet
+       und weg), Review erst danach. Ohne Rückgriff auf die archivierte Summary
+       wäre es leer — Kacheln ohne Zahlen, Fragen ohne Datenlage. */
+    let s = withExportStamp(filledState(), '2026-07-01T08:00:00.000Z');
+    s = closeMonth(s, '2026-07-01');
+    eq(Object.keys(s.days).length, 0, 'die Tage sind nach dem Abschluss weg');
+
+    const review = monthlyReview(s, MONTH);
+    eq(review.summary.logging.daysWithWeight, 28, 'die Zahlen kommen aus dem Archiv');
+    eq(reviewQuestions(review, s).length, 10, 'auch die Fragen tragen wieder Daten');
+  });
+
+  test('eine unvollständige Archiv-Summary wird nicht angefasst', () => {
+    // Fremde oder angeschnittene Daten dürfen das Review nicht reißen —
+    // dann lieber die ehrliche leere Auswertung.
+    const s = baseState({ months: [{ month: MONTH, summary: { weight: {} } }] });
+    const review = monthlyReview(s, MONTH);
+    eq(review.summary.logging.daysWithWeight, 0);
   });
 });

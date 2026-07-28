@@ -32,9 +32,12 @@
  *   v13 Overlay-Fenster fürs Handy: dialog trägt nur noch die Fläche, das
  *       sichtbare Fenster ist ein Kind darin, der Griffbalken zieht wirklich
  *   v14 Einblendbewegung trägt nicht mehr die Position des Fensters
+ *   v15 Trainingsuhr endet nur noch auf „Training beenden", Pause läuft an
+ *       der Übung und in der angehefteten Kopfleiste, Ansichtswechsel
+ *       gleiten, toter Platzhalter-Code entfernt
  */
 
-const CACHE_VERSION = 'v14';
+const CACHE_VERSION = 'v15';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -67,7 +70,6 @@ const PRECACHE = [
   './js/views/gauge.js',
   './js/views/nutrition.js',
   './js/views/onboarding.js',
-  './js/views/placeholder.js',
   './js/views/profile.js',
   './js/views/review.js',
   './js/views/session.js',

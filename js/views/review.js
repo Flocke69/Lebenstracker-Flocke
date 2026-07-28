@@ -27,7 +27,7 @@ import {
 } from '../lib/review.js';
 import { monthDays, weekKeys } from '../lib/dates.js';
 import { getReviewRecord, firstTrackedMonth } from '../lib/state.js';
-import { buildExport, exportFilename, withExportStamp } from '../lib/archive.js';
+import { buildExport, exportFilename, withExportStamp, hasFreshExport } from '../lib/archive.js';
 import { LOW_READINESS, SHORT_SLEEP_H } from '../lib/aggregate.js';
 import { MUSCLE_GROUPS } from '../../data/exercises.js';
 import { el, replace, card, panel, int, dec } from './dom.js';
@@ -245,7 +245,7 @@ function volumeCard(review) {
 
 /* ─── Die zehn Fragen ────────────────────────────────────────────────────── */
 
-function questionsCard(store, state, review, mk, questions, answers) {
+function questionsCard(store, state, review, questions, answers) {
   const answered = questions.filter((q) => (answers[q.id] ?? '').trim() !== '').length;
 
   const save = (id, value) => {
@@ -409,7 +409,12 @@ function exportCard(store, state, review, mk, answers) {
   }
 
   /* Der Zeitstempel aus dem Zustand ist die Bestätigung: er überlebt das
-     Neuzeichnen und sagt beim nächsten Öffnen noch, ob der Monat gesichert ist. */
+     Neuzeichnen und sagt beim nächsten Öffnen noch, ob der Monat gesichert ist.
+
+     „Gesichert" heißt: DIESER Monat wurde nach seinem Ende exportiert — nicht
+     „es gab irgendwann irgendeinen Export". Sonst stünde nach der ersten
+     Sicherung überhaupt an jedem Monat für immer ein grüner Chip. */
+  const fresh = hasFreshExport(state, mk);
   const stamp = state.lastExportAt;
   const exported = typeof stamp === 'string' && !Number.isNaN(new Date(stamp).getTime())
     ? new Date(stamp)
@@ -421,12 +426,12 @@ function exportCard(store, state, review, mk, answers) {
       + `${String(exported.getMinutes()).padStart(2, '0')} Uhr.`
     : 'Noch nie exportiert.';
 
-  return el('div', { class: `card card--tone card--${exported ? 'good' : 'bad'}` },
+  return el('div', { class: `card card--tone card--${fresh ? 'good' : 'bad'}` },
     el('div', { class: 'card__head' },
       el('span', { class: 'eyebrow', text: 'Monatsdateien' }),
       el('span', {
-        class: `chip chip--${exported ? 'good' : 'bad'}`,
-        text: exported ? 'gesichert' : 'nicht gesichert',
+        class: `chip chip--${fresh ? 'good' : 'bad'}`,
+        text: fresh ? 'gesichert' : 'nicht gesichert',
       })),
 
     el('p', { class: 'field__hint' },
@@ -448,7 +453,7 @@ function exportCard(store, state, review, mk, answers) {
       onclick: copyForClaude,
     }),
     slot,
-    el('p', { class: `card__note card__note--${exported ? 'good' : 'bad'}`, text: exportedText }),
+    el('p', { class: `card__note card__note--${fresh ? 'good' : 'bad'}`, text: exportedText }),
     el('p', { class: 'card__note' },
       'Der Kopierblock ist für das Gespräch, die Datei für deine Ablage. Der ',
       'Block enthält am Ende denselben Datensatz — du kannst ihn unten wieder ',
@@ -644,7 +649,7 @@ export function render({ store }) {
     /* Alles Weitere gehört zum MONAT. Wöchentlich wären die zehn Fragen eine
        Pflichtübung, die nach drei Wochen nicht mehr gemacht wird — und ein
        Kopierblock, den man jede Woche sieht, wird zu Möbel. */
-    mode === 'month' ? questionsCard(store, state, review, mk, questions, answers) : null,
+    mode === 'month' ? questionsCard(store, state, review, questions, answers) : null,
     mode === 'month' ? feedbackCard(review, questions, answers) : null,
     mode === 'month' ? exportCard(store, state, review, mk, answers) : null,
     mode === 'month'
@@ -661,6 +666,7 @@ export function render({ store }) {
 
     el('p', { class: 'field__hint' },
       `Schwellen: Schlaf unter ${dec(SHORT_SLEEP_H, 1)} h, Bereitschaft unter `,
-      `${LOW_READINESS}, Protein unter 85 % des Ziels. Alle Regeln stehen in `,
-      'js/lib/review.js und sind nachlesbar.'));
+      `${LOW_READINESS}, Protein an weniger als 70 % der Tage erreicht — ein `,
+      'Tag zählt ab 90 % des Ziels. Alle Regeln stehen in js/lib/review.js ',
+      'und sind nachlesbar.'));
 }

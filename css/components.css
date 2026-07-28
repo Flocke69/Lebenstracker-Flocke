@@ -136,6 +136,12 @@
   box-shadow: inset 0 2px 0 0 var(--accent);
 }
 
+/* Das Glyph des aktiven Reiters glüht im Flutlichtton — dieselbe Sprache wie
+   die Kreidelinie darüber. */
+.tab--active .tab__glyph {
+  color: var(--accent);
+}
+
 .tab__glyph {
   font-family: var(--font-display);
   font-size: var(--text-md);
@@ -1247,22 +1253,49 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   font-variant-numeric: tabular-nums;
 }
 
-/* ─── Trainingsfenster: Uhr und Pause ───────────────────────────────────── */
+/* ─── Trainingsfenster: die angeheftete Kopfleiste ──────────────────────── */
 
+/* Dauer, Sätze, Pause — die drei Zahlen kleben oben am Fenster und bleiben
+   sichtbar, egal wie tief man in der Übungsliste steckt. Die negativen Ränder
+   ziehen die Leiste über die Polsterung des Fensterkörpers, damit beim
+   Scrollen nichts seitlich hervorblitzt. */
 .session-bar {
+  position: sticky;
+  top: calc(-1 * var(--space-4));
+  z-index: 5;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
+  grid-template-columns: repeat(3, 1fr);
+  margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) var(--space-4);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  background: var(--pitch-800);
+  border-bottom: 1px solid var(--line-200);
 }
 
 .session-bar__cell {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 2px;
-  padding: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+}
+
+.session-bar__cell + .session-bar__cell {
+  border-left: 1px solid var(--line-200);
+  border-radius: 0;
+}
+
+/* Die Pausenzelle ist ein Knopf: Antippen springt zur laufenden Pause. */
+.session-bar__cell--tap {
+  min-height: 0;
+  cursor: pointer;
+  font-weight: inherit;
+}
+
+.session-bar__cell--tap:active {
   background: var(--pitch-700);
-  border-radius: var(--radius-md);
 }
 
 .session-bar__value {
@@ -1273,6 +1306,19 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   color: var(--sodium-500);
 }
 
+.session-bar__value--rest {
+  color: var(--ok-500);
+}
+
+.session-bar__value--idle {
+  color: var(--line-300);
+}
+
+/* Endphase und Ablauf färben den Countdown um — dieselbe Sprache wie der
+   Balken an der Übung. */
+.session-bar--soon .session-bar__value--rest { color: var(--sodium-500); }
+.session-bar--over .session-bar__value--rest { color: var(--good-500); }
+
 .session-bar__label {
   font-size: var(--text-xs);
   color: var(--ink-muted);
@@ -1281,21 +1327,33 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   font-weight: 600;
 }
 
+/* Die Pausenlinie läuft unter der ganzen Leiste leer — sichtbar auch aus dem
+   Augenwinkel, ohne eine Zahl zu lesen. */
+.session-bar__restline {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+}
+
+.session-bar__restfill {
+  height: 100%;
+  background: var(--ok-500);
+}
+
+.session-bar--soon .session-bar__restfill { background: var(--sodium-500); }
+
+/* ─── Die Pausenuhr an der Übung ────────────────────────────────────────── */
+
 .rest {
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-md);
   border: 1px solid var(--ok-edge);
   background: var(--ok-fill);
-  margin-bottom: var(--space-4);
-}
-
-/* Ohne laufende Pause bleibt der Platz erhalten, aber ruhig — sonst hüpft der
-   Inhalt bei jedem Satz um 90 px nach unten. */
-.rest--idle {
-  border-color: var(--line-200);
-  background: none;
-  font-size: var(--text-xs);
-  color: var(--ink-muted);
+  margin-top: var(--space-3);
+  transition: border-color var(--dur-med) var(--ease),
+              background var(--dur-med) var(--ease);
 }
 
 .rest__head {
@@ -1317,6 +1375,15 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--ok-500);
+}
+
+/* „Weiter geht's" liegt schon im Baum und wird nur sichtbar geschaltet —
+   der Sekundentakt schreibt Klassen, er baut kein DOM um. */
+.rest__go {
+  display: none;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--good-500);
 }
 
 .rest__track {
@@ -1341,6 +1408,20 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 .rest__tools .btn {
   flex: 1;
 }
+
+/* Endphase: die letzten Sekunden schalten auf Signalfarbe. */
+.rest--soon .rest__time { color: var(--sodium-500); }
+.rest--soon .rest__fill { background: var(--sodium-500); }
+
+/* Abgelaufen: aus der Pause wird die Aufforderung. */
+.rest--over {
+  border-color: var(--good-edge);
+  background: var(--good-fill);
+}
+
+.rest--over .rest__time { display: none; }
+.rest--over .rest__go { display: inline; }
+.rest--over .rest__bump { display: none; }
 
 /* ─── Trainings-Logger ──────────────────────────────────────────────────── */
 
@@ -1398,12 +1479,27 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   font-weight: 400;
 }
 
+/* Rechts am Kopf: Zielvorgabe und darunter die Satzpause der Übung. Beides
+   zusammen, damit man vor dem ersten Satz alles Nötige an einem Ort liest —
+   ohne zu scrollen. */
 .exercise__target {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
   font-family: var(--font-display);
   font-size: var(--text-md);
   color: var(--sodium-500);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  text-align: right;
+}
+
+.exercise__pause {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--ink-muted);
 }
 
 .exercise__last {
@@ -2465,25 +2561,27 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   margin-bottom: var(--space-1);
 }
 
-/* ─── Platzhalter für noch nicht gebaute Bereiche ───────────────────────── */
+/* ─── Ansichtswechsel ───────────────────────────────────────────────────── */
 
-.placeholder {
-  text-align: center;
-  padding: var(--space-12) var(--space-4);
-  color: var(--ink-muted);
+/* Nur beim Reiterwechsel, nie beim Neuzeichnen nach einer Eingabe — die
+   Klasse vergibt js/app.js entsprechend. Bewegung ist klein genug, dass sie
+   auch hängen bleiben dürfte, ohne etwas zu verdecken. */
+.view-enter {
+  animation: view-enter var(--dur-med) var(--ease);
 }
 
-.placeholder__phase {
-  font-family: var(--font-display);
-  font-size: var(--text-2xl);
-  color: var(--line-300);
-  display: block;
-  margin-bottom: var(--space-2);
+@keyframes view-enter {
+  from {
+    opacity: 0.4;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.placeholder__list {
-  text-align: left;
-  max-width: 22rem;
-  margin: var(--space-5) auto 0;
-  font-size: var(--text-sm);
+@media (prefers-reduced-motion: reduce) {
+  .view-enter { animation: none; }
 }

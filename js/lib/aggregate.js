@@ -15,9 +15,9 @@
  *   was in einer Woche an Fett dazukommt oder weggeht.
  */
 
-import { monthDays, weekKeys, weekStartKey, addDays, monthKey, dateKey, parseKey }
+import { monthDays, weekKeys, weekStartKey, addDays, parseKey }
   from './dates.js';
-import { getDay, weightOn, dayTypeFor } from './state.js';
+import { getDay, weightOn, dayTypeFor, hasLoggedSets } from './state.js';
 import { dayTargets, ageOn } from './energy.js';
 import { setsPerMuscle, tonnage, totalSets, emptyVolume } from './volume.js';
 
@@ -175,7 +175,10 @@ export function summarize(state, keys, meta = {}) {
     }
   });
 
-  const sessions = days.flatMap((d) => d.sessions ?? []);
+  /* Nur Einheiten mit mindestens einem geloggten Satz. Schon der Startknopf
+     legt eine Einheit an — wer nur reinschaut und wieder schließt, hat nicht
+     trainiert und darf nicht als Trainingstag zählen. */
+  const sessions = days.flatMap((d) => d.sessions ?? []).filter(hasLoggedSets);
   const dayTypes = keys.map((key) => dayTypeFor(state, key));
 
   return {
@@ -190,7 +193,7 @@ export function summarize(state, keys, meta = {}) {
       daysWithCheckin: days.filter((d) => d.checkin && Object.keys(d.checkin).length).length,
       daysWithWeight: countKnown(weight),
       daysWithNutrition: countKnown(kcal),
-      daysWithTraining: days.filter((d) => (d.sessions ?? []).length > 0).length,
+      daysWithTraining: days.filter((d) => (d.sessions ?? []).some(hasLoggedSets)).length,
     },
 
     weight: {
@@ -293,7 +296,7 @@ export function loggedKeys(state) {
       const d = state.days[key];
       return isNum(d?.weightKg)
         || isNum(d?.readiness)
-        || (d?.sessions ?? []).length > 0
+        || (d?.sessions ?? []).some(hasLoggedSets)
         || isNum(d?.nutrition?.kcal);
     })
     .sort();
@@ -317,9 +320,4 @@ export function compare(current, previous) {
       ])
     ),
   };
-}
-
-/** Monatsschlüssel des Zustands. */
-export function currentMonthOf(state) {
-  return state.currentMonth ?? monthKey(dateKey(new Date()));
 }

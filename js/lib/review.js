@@ -31,8 +31,6 @@ import { DRIFT_THRESHOLD_KG, suggestKcalAdjustment } from './energy.js';
 export const THRESHOLDS = Object.freeze({
   /** Unter dieser Trefferquote gilt Protein als nicht erreicht. */
   proteinHitRate: 0.7,
-  /** Unter diesem Anteil des Proteinziels wird es deutlich. */
-  proteinRatio: 0.85,
   /** Weniger erfasste Tage als das, und die Woche ist nicht auswertbar. */
   minLoggedDays: 5,
   /** Ab so vielen schlechten Tagen wird es ein Befund. */
@@ -351,10 +349,34 @@ export function weeklyReview(state, anyDayKey) {
   };
 }
 
+/**
+ * Kennzahlen eines Monats — live aus den Tagen, sonst aus dem Archiv.
+ *
+ * Nach dem Monatsabschluss sind die Tage verdichtet und gelöscht; ihre
+ * Summary liegt dann in `state.months`. Ohne diesen Rückgriff wäre genau der
+ * ausdrücklich unterstützte Fall „Review nachholen" (monthReviewDue, Zweig
+ * `overdue`) immer leer: Kacheln ohne Zahlen, Fragen ohne Datenlage.
+ */
+function summaryFor(state, mk) {
+  const live = monthSummary(state, mk);
+  const counted = live.logging.daysWithCheckin + live.logging.daysWithWeight
+    + live.logging.daysWithNutrition + live.logging.daysWithTraining;
+  if (counted > 0) return live;
+
+  /* Nur eine VOLLSTÄNDIGE archivierte Summary taugt als Ersatz — eine aus
+     fremder Quelle könnte Teile vermissen, und dann ist die leere Live-Form
+     der sicherere Boden als ein Absturz mitten im Review. */
+  const archived = (state.months ?? []).find((m) => m.month === mk)?.summary;
+  const complete = ['period', 'logging', 'weight', 'sleep', 'readiness',
+    'soreness', 'nutrition', 'training', 'football']
+    .every((part) => archived?.[part]);
+  return complete ? archived : live;
+}
+
 /** Monats-Review inklusive Vergleich zum Vormonat. */
 export function monthlyReview(state, mk) {
-  const summary = monthSummary(state, mk);
-  const previous = monthSummary(state, addMonths(mk, -1));
+  const summary = summaryFor(state, mk);
+  const previous = summaryFor(state, addMonths(mk, -1));
   const lastDay = summary.period.end;
   const trend = volumeTrend(state, lastDay, 5);
   const stagnating = stagnatingExercises(state, lastDay, 4);
@@ -1098,7 +1120,7 @@ export function toMarkdown(review, state) {
   }
   L.push('');
 
-  if (isNum(s.insights.sleepVsReadiness.difference)) {
+  if (isNum(s.insights?.sleepVsReadiness?.difference)) {
     L.push('## Zusammenhang');
     const d = s.insights.sleepVsReadiness;
     L.push(`- Nach Nächten unter ${de(SHORT_SLEEP_H)} h lag die Bereitschaft im `

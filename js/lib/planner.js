@@ -20,9 +20,10 @@
  *
  * Nicht zu verwechseln — Beintraining ganz zu streichen wäre die riskantere
  * Variante. Exzentrische Hamstring-Arbeit ist der wirksamste bekannte Schutz
- * gegen die häufigste Fußballverletzung. Deshalb bleibt Stufe "light" (der
- * Prophylaxeblock) an jedem Tag außer Spieltag und Vortag erlaubt: er kostet
- * praktisch keine Erholung.
+ * gegen die häufigste Fußballverletzung. Deshalb existiert die Stufe "light":
+ * als Prophylaxe markierte Übungen bleiben dort erlaubt, weil sie praktisch
+ * keine Erholung kosten. Ob der aktuelle Plan solche Übungen führt, entscheidet
+ * der Plan — die Texte hier versprechen deshalb keinen Prophylaxeblock.
  */
 
 import { weekdayOf, WEEKDAYS_LONG } from './dates.js';
@@ -39,7 +40,7 @@ export const NO_LEG_VOLUME_WITHIN_DAYS = 2;
 /**
  * Die drei Stufen:
  *   none  — gar nichts für die Beine
- *   light — nur Prophylaxe und Mobilität (Nordic Curls, Copenhagen, Waden)
+ *   light — nur lockere, prophylaktische Beinarbeit; schwere Sätze fallen aus
  *   heavy — schwere Sätze bei niedrigem Volumen
  */
 export const LEG_LEVELS = Object.freeze(['none', 'light', 'heavy']);
@@ -122,7 +123,7 @@ function allowanceForWeekday(weekday, matchDayWeekday, teamTrainingWeekdays) {
       level: 'light',
       reason:
         `Das Spiel war vor ${daysSinceMatch} Tag${daysSinceMatch === 1 ? '' : 'en'}. ` +
-        'Nur Prophylaxe und Mobilität — schwere Sätze auf müde Beine bringen nichts.',
+        'Beine nur locker — schwere Sätze auf müde Beine bringen nichts.',
     };
   }
 
@@ -145,7 +146,7 @@ function allowanceForWeekday(weekday, matchDayWeekday, teamTrainingWeekdays) {
       level: 'light',
       reason:
         'Morgen ist Mannschaftstraining. Schwere Beine heute würden das ' +
-        'Training ruinieren — nur Prophylaxe.',
+        'Training ruinieren — Beinarbeit bleibt leicht.',
     };
   }
 
@@ -173,13 +174,6 @@ export function legVolumeAllowance(key, config) {
   return allowanceForWeekday(weekdayOf(key), matchDayWeekday, teamTrainingWeekdays);
 }
 
-/** Dieselbe Regel, aber direkt auf einem Wochentag statt einem Datum. */
-export function legVolumeAllowanceForWeekday(weekday, config) {
-  const { matchDayWeekday, teamTrainingWeekdays } = assertConfig(config);
-  assertWeekday(weekday, 'weekday');
-  return allowanceForWeekday(weekday, matchDayWeekday, teamTrainingWeekdays);
-}
-
 /** Alle Wochentage, die schweres Beintraining tragen, aufsteigend. */
 export function heavyLegWeekdays(config) {
   const { matchDayWeekday, teamTrainingWeekdays } = assertConfig(config);
@@ -201,9 +195,9 @@ export function heavyLegWeekdays(config) {
  * Eigenschaften. Dadurch ist sie hier testbar, statt in einer Ansicht zu
  * verschwinden.
  *
- * Prophylaxe bleibt erlaubt, solange überhaupt etwas geht: Nordic-Ersatz,
- * Copenhagen und Waden kosten kaum Erholung und sind genau der Teil, der die
- * Saison schützt. Schwere Beinarbeit fällt schon bei Stufe "light" weg.
+ * Als Prophylaxe markierte Übungen bleiben erlaubt, solange überhaupt etwas
+ * geht: sie kosten kaum Erholung und sind genau der Teil, der die Saison
+ * schützt. Schwere Beinarbeit fällt schon bei Stufe "light" weg.
  */
 export function exerciseBlockReason({ loadsLegs, prophylaxis = false }, legLevel) {
   if (!LEG_LEVELS.includes(legLevel)) {
@@ -215,7 +209,7 @@ export function exerciseBlockReason({ loadsLegs, prophylaxis = false }, legLevel
     return 'Heute gesperrt — Spieltag oder der Tag davor.';
   }
   if (legLevel === 'light' && !prophylaxis) {
-    return 'Heute nur Prophylaxe. Schwere Beinarbeit fällt aus.';
+    return 'Heute gesperrt — zu nah am Fußball für schwere Beinarbeit.';
   }
   return null;
 }
@@ -262,10 +256,10 @@ export function pickLegDay(config) {
       reason: candidates.length
         ? `Keiner deiner Gym-Tage (${gymNames}) trägt schweres Beintraining. ` +
           `Rund um dein Spiel käme dafür ${candidateNames} in Frage. ` +
-          'Ohne passenden Tag bleibt es beim Prophylaxeblock.'
+          'Ohne passenden Tag fällt die schwere Bein-Einheit aus.'
         : `Bei diesem Spiel- und Trainingsrhythmus gibt es keinen Tag mit ` +
-          `genug Abstand für schweres Beintraining. Es bleibt beim ` +
-          `Prophylaxeblock — der ist ohnehin der wichtigere Teil.`,
+          `genug Abstand für schweres Beintraining — die schwere ` +
+          `Bein-Einheit fällt dann aus.`,
     };
   }
 
@@ -339,7 +333,7 @@ export function suggestGymWeekdays(config) {
     } else {
       warning =
         'Bei diesem Rhythmus gibt es keinen Tag mit genug Abstand für ' +
-        'schweres Beintraining. Es bleibt beim Prophylaxeblock.';
+        'schweres Beintraining — Beinarbeit bleibt dann leicht.';
     }
   }
 

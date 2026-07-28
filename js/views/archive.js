@@ -9,12 +9,19 @@
  * einzige Kopie, die das überlebt.
  */
 
-import { todayKey, formatMonth, formatDayShort } from '../lib/dates.js';
+import { todayKey, formatMonth } from '../lib/dates.js';
 import {
-  needsRollover, canCloseMonth, rolloverPreview, buildExport, exportFilename,
+  canCloseMonth, rolloverPreview, buildExport, exportFilename,
   withExportStamp, closeMonth, inspectImport, applyImport, exportReminder,
 } from '../lib/archive.js';
+import { loggedDayKeys } from '../lib/state.js';
 import { el, replace, card, int, dec, stat } from './dom.js';
+
+/** ISO-Zeitstempel als lokales Datum — slice(0, 10) wäre das UTC-Datum. */
+function stampDate(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? String(iso).slice(0, 10) : d.toLocaleDateString('de-DE');
+}
 
 /* ─── Datei rausgeben ────────────────────────────────────────────────────── */
 
@@ -113,7 +120,7 @@ function importCard(store) {
         replace(slot,
           el('div', { class: 'notice' },
             el('span', { class: 'notice__title', text: `${info.label} — ${info.dayCount} Tage` }),
-            info.exportedAt ? `Gesichert am ${info.exportedAt.slice(0, 10)}. ` : '',
+            info.exportedAt ? `Gesichert am ${stampDate(info.exportedAt)}. ` : '',
             'Bestehende Tage bleiben unangetastet.'),
           el('button', {
             type: 'button', class: 'btn btn--primary btn--block', text: 'Diese Tage einspielen',
@@ -259,8 +266,10 @@ export function render({ store }) {
         reminder.text)
       : el('div', { class: 'notice', text: reminder.text }),
 
+    /* Gezählt werden nur Tage DES LAUFENDEN MONATS — nach dem Zurückspielen
+       eines alten Monats lägen sonst dessen Tage mit in dieser Zahl. */
     card(`Laufender Monat — ${formatMonth(state.currentMonth)}`,
-      el('span', { class: 'chip', text: `${Object.keys(state.days ?? {}).length} Tage` }),
+      el('span', { class: 'chip', text: `${loggedDayKeys(state).length} Tage` }),
       el('p', { class: 'field__hint' },
         'Du kannst jederzeit zwischendurch sichern. Das ändert nichts an den ',
         'Daten, setzt aber die Erinnerung zurück.'),

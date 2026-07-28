@@ -138,13 +138,18 @@ function makeDraggable({ handles, panel, dialog, onClose }) {
  * @param {string}   [options.eyebrow]   kleine Zeile darüber
  * @param {Function} options.body        () => Node, wird bei jeder Änderung neu gerufen
  * @param {Function} [options.footer]    () => Node, klebt am unteren Rand
- * @param {string}   [options.doneLabel] Text des Schließen-Knopfes
- * @param {Function} [options.onClose]   nach dem Schließen
+ * @param {string|Function} [options.doneLabel] Text des Schließen-Knopfes —
+ *   als Funktion, wenn er sich mit dem Zustand ändern soll („Training
+ *   beenden" wird nach dem Beenden zu „Schließen")
+ * @param {Function} [options.onDone]    NUR beim Schließen-Knopf, vor dem
+ *   Schließen. Der Unterschied zu onClose ist der Punkt: Wegwischen ist kein
+ *   Abschließen.
+ * @param {Function} [options.onClose]   nach jedem Schließen, egal wie
  * @param {string}   [options.tone]      'good' | 'ok' | 'bad' — färbt die Kopfkante
  */
 export function openSheet({
   store, title, eyebrow = null, body, footer = null,
-  doneLabel = 'Abgeschlossen', onClose = null, tone = null,
+  doneLabel = 'Abgeschlossen', onDone = null, onClose = null, tone = null,
 }) {
   // Ein noch offenes Fenster verschwindet sofort, nicht mit Animation:
   // sonst liegen zwei übereinander.
@@ -198,8 +203,11 @@ export function openSheet({
       el('button', {
         type: 'button',
         class: 'btn btn--primary btn--block',
-        text: doneLabel,
-        onclick: () => closeSheet(),
+        text: typeof doneLabel === 'function' ? doneLabel() : doneLabel,
+        onclick: () => {
+          if (onDone) onDone();
+          closeSheet();
+        },
       }));
   }
 
@@ -271,9 +279,4 @@ export function closeSheet({ instant = false } = {}) {
   panel.style.transition = `transform ${CLOSE_MS}ms var(--ease, ease)`;
   panel.style.transform = 'translateY(100%)';
   setTimeout(remove, CLOSE_MS);
-}
-
-/** Ist gerade ein Fenster offen? */
-export function sheetIsOpen() {
-  return current !== null;
 }

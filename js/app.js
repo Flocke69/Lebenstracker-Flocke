@@ -6,7 +6,7 @@
  */
 
 import { createStore, requestPersistentStorage } from './store.js';
-import { isProfileComplete } from './lib/state.js';
+import { isProfileComplete, withStaleSessionsClosed } from './lib/state.js';
 import { formatMonth, monthKey, todayKey } from './lib/dates.js';
 import { el, replace } from './views/dom.js';
 import { closeSheet } from './views/sheet.js';
@@ -19,7 +19,6 @@ import * as reviewView from './views/review.js';
 import * as archiveView from './views/archive.js';
 import * as profileView from './views/profile.js';
 import * as onboardingView from './views/onboarding.js';
-import * as placeholderView from './views/placeholder.js';
 
 const VIEWS = {
   heute: todayView,
@@ -112,15 +111,20 @@ function renderRollover() {
   }));
 }
 
+/* Beim Reiterwechsel gleitet die neue Ansicht kurz herein; beim Neuzeichnen
+   nach einer Eingabe NICHT — sonst würde der Screen bei jedem Tippen zucken. */
+let paintedRoute = null;
+
 function renderApp() {
   const route = currentRoute();
   root.className = 'app';
 
-  const viewSlot = el('main', { id: 'view' });
-  const view = VIEWS[route];
-  const body = view
-    ? view.render({ store, navigate })
-    : placeholderView.render({ store, navigate, route });
+  const viewSlot = el('main', {
+    id: 'view',
+    class: route === paintedRoute ? null : 'view-enter',
+  });
+  paintedRoute = route;
+  const body = (VIEWS[route] ?? VIEWS[DEFAULT_ROUTE]).render({ store, navigate });
 
   replace(viewSlot, ...storageWarnings(), body);
 
@@ -242,6 +246,11 @@ function boot() {
         err.message)));
     return;
   }
+
+  /* Laufende Uhren von gestern und davor schließen — rückwirkend auf den
+     letzten Satz. Muss VOR dem ersten Zeichnen passieren, sonst stünde kurz
+     „läuft" an einer Einheit von vorgestern. */
+  store.update((s) => withStaleSessionsClosed(s, todayKey()));
 
   store.subscribe(render);
   window.addEventListener('hashchange', onHashChange);
