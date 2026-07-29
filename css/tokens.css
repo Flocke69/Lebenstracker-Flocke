@@ -144,7 +144,9 @@
   --text-lg: 1.25rem;    /* 20px — Kartenüberschrift */
   --text-xl: 1.75rem;    /* 28px — Screenüberschrift */
   --text-2xl: 2.75rem;   /* 44px — Kennzahl */
-  --text-hero: 4rem;     /* 64px — RESERVIERT für den Bereitschafts-Wert */
+  --text-hero: 4rem;     /* 64px — RESERVIERT für die zwei Held-Zahlen:
+                                    Bereitschaft und Trainingsdauer im
+                                    Abschlussbild */
 
   --leading-tight: 1.05;   /* Displayzahlen */
   --leading-snug: 1.3;     /* Überschriften */

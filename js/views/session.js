@@ -36,11 +36,11 @@ import {
 } from '../lib/state.js';
 import { legVolumeAllowance, exerciseBlockReason } from '../lib/planner.js';
 import { readinessScore, trainingGuidance } from '../lib/readiness.js';
-import { totalSets } from '../lib/volume.js';
+import { totalSets, tonnage } from '../lib/volume.js';
 import { EXERCISES, exercise } from '../../data/exercises.js';
 import { sessionExercises } from '../../data/plan-default.js';
 import {
-  el, decimalInput, parseDecimal, toInputValue, dec, kg, setCount,
+  el, decimalInput, parseDecimal, toInputValue, dec, kg, setCount, setWord,
 } from './dom.js';
 import { openSheet } from './sheet.js';
 import { liveText, liveWidth, liveApply, formatSeconds, formatDuration } from './clock.js';
@@ -370,18 +370,66 @@ function exerciseCard(store, state, dayKey, planId, entry, setsDelta, legLevel, 
     ex.note && !blocked ? el('p', { class: 'exercise__note', text: ex.note }) : null);
 }
 
+/* ─── Abschlussbild ──────────────────────────────────────────────────────── */
+
+/**
+ * Was nach „Training abschließen" auf dem Screen steht: die Dauer, groß.
+ *
+ * Das ist die Zahl, für die die Stoppuhr überhaupt läuft — „so lange war ich
+ * im Gym". Sätze und bewegtes Gewicht stehen daneben, weil sie dieselbe
+ * Frage aus zwei anderen Richtungen beantworten: War das ein Training?
+ */
+function finishSummary(state, dayKey, session) {
+  const logged = getSession(state, dayKey, session.id);
+  const minutes = sessionMinutes(logged ?? {});
+  const sets = totalSets(logged ? [logged] : []);
+  const moved = tonnage(logged ? [logged] : []);
+
+  return el('div', { class: 'finish' },
+    el('span', { class: 'eyebrow', text: 'Training abgeschlossen' }),
+    el('p', {
+      class: 'finish__time',
+      text: minutes === null ? '—' : formatDuration(minutes * 60),
+    }),
+    el('p', {
+      class: 'finish__label',
+      text: minutes === null
+        ? `${session.name} — ohne Uhr nachgetragen`
+        : `im Gym — ${session.name}`,
+    }),
+    el('div', { class: 'finish__stats' },
+      el('span', { class: 'finish__stat' },
+        el('b', { text: String(sets) }), ` ${setWord(sets)}`),
+      moved > 0
+        ? el('span', { class: 'finish__stat' },
+          el('b', { text: Math.round(moved).toLocaleString('de-DE') }), ' kg bewegt')
+        : null),
+    el('p', {
+      class: 'finish__note',
+      text: 'Die Dauer bleibt an der Einheit gespeichert — sie steht auf der '
+        + 'Trainingsseite und im Heute-Screen.',
+    }));
+}
+
 /* ─── Fenster ────────────────────────────────────────────────────────────── */
 
 /**
  * Trainingsfenster öffnen.
  *
- * Startet die Uhr, falls sie für heute noch nicht läuft. Das ist der Grund,
- * warum "Training starten" nur diese eine Funktion aufruft: Uhr und Fenster
- * gehören zusammen, und zwei Wege dorthin wären zwei Wege, die
- * auseinanderlaufen.
+ * DIE STOPPUHR IST DER RAHMEN DES BESUCHS: „Training starten" drückt sie an,
+ * „Training abschließen" hält sie an und zeigt als Abschlussbild, wie lange
+ * der Gym-Besuch gedauert hat — mit Sätzen und bewegtem Gewicht dazu.
  *
- * Beendet wird NUR über den Knopf unten. Wegwischen, ×, Escape — alles lässt
- * die Uhr weiterlaufen, und die Trainingsseite zeigt „läuft".
+ * Für die HEUTIGE Einheit startet die Uhr schon mit dem Öffnen: der Knopf auf
+ * der Karte heißt „Training starten", und genau das soll er tun. Für jede
+ * andere Einheit (vorgezogen, verschoben, nachgeholt) liegt der Startknopf
+ * unten im Fenster — die App erfindet keine Dauer für einen Tag, an dem nur
+ * nachgetragen wird, aber sie verweigert die Stoppuhr auch niemandem, der
+ * wirklich gerade trainiert.
+ *
+ * „Schließen", Wegwischen, ×, Escape — alles lässt die Uhr weiterlaufen und
+ * die Trainingsseite zeigt „läuft". Nur „Training abschließen" beendet.
+ * Abschließen ohne einen einzigen Satz verwirft die leere Einheit.
  */
 export function openSession(store, dayKey, session) {
   const isToday = dayKey === todayKey();
@@ -393,33 +441,70 @@ export function openSession(store, dayKey, session) {
   let handle = null;
   const redraw = () => handle?.redraw();
 
+  /* Nach „Training abschließen" zeigt das Fenster das Abschlussbild statt der
+     Übungsliste. Der Merker lebt nur in diesem Fenster: wer die Einheit
+     später wieder öffnet, sieht ganz normal seine Sätze. */
+  let justEnded = false;
+
   const liveSession = () => getSession(store.getState(), dayKey, session.id);
   const isRunning = () => {
     const logged = liveSession();
     return Boolean(logged?.startedAt && !logged.endedAt);
   };
 
+  const finish = () => {
+    const logged = liveSession();
+    writeRest(null);
+    if (!logged || (!hasLoggedSets(logged) && logged.sessionRpe == null)) {
+      /* Abgeschlossen ohne einen einzigen Satz: da war kein Training. Die
+         leere Hülle verschwindet, statt in Reviews als Trainingstag zu
+         zählen — und ein Abschlussbild über nichts gibt es auch nicht. */
+      store.update((s) => withoutSession(s, dayKey, session.id));
+      handle?.close();
+      return;
+    }
+    justEnded = true;
+    store.setSessionMeta(dayKey, session.id, { endedAt: new Date().toISOString() });
+  };
+
   handle = openSheet({
     /* Zustand BEIM ÖFFNEN: eine beendete Einheit heißt nicht „läuft", nur
-       weil heute ist. Wer per neuem Satz wieder einsteigt, sieht den
-       Unterschied am Knopf unten — der zieht bei jedem Zeichnen nach. */
+       weil heute ist. Der Fuß des Fensters zieht bei jedem Zeichnen nach. */
     store,
     eyebrow: isRunning() ? 'Training läuft' : isToday ? 'Heute' : formatDayLong(dayKey),
     title: session.name,
-    doneLabel: () => (isRunning() ? 'Training beenden' : 'Schließen'),
-    onDone: () => {
-      /* NUR hier endet die Uhr. Die Pause gehört zum Training und geht mit. */
+    doneLabel: 'Schließen',
+    /* „Schließen" tritt zurück, solange unten eine wichtigere Handlung
+       steht — Starten oder Abschließen. */
+    doneTone: () => {
       const logged = liveSession();
-      if (logged && !hasLoggedSets(logged) && logged.sessionRpe == null) {
-        /* Beendet ohne einen einzigen Satz: da war kein Training. Die leere
-           Hülle verschwindet, statt in Reviews als Trainingstag zu zählen. */
-        store.update((s) => withoutSession(s, dayKey, session.id));
-      } else if (isRunning()) {
-        store.setSessionMeta(dayKey, session.id, { endedAt: new Date().toISOString() });
+      const finishedView = Boolean(logged?.endedAt) && hasLoggedSets(logged);
+      return justEnded || (!isRunning() && finishedView) ? 'primary' : 'ghost';
+    },
+    footer: () => {
+      if (justEnded) return null;
+      if (isRunning()) {
+        return el('button', {
+          type: 'button', class: 'btn btn--primary btn--block',
+          text: 'Training abschließen',
+          onclick: finish,
+        });
       }
-      writeRest(null);
+      const logged = liveSession();
+      // Eine fertige Einheit MIT Sätzen wird nur noch angesehen.
+      if (logged?.endedAt && hasLoggedSets(logged)) return null;
+      /* startedAt UND endedAt setzen: für frische Einheiten ist endedAt
+         ohnehin leer, und eine beendete leere Hülle (Altversion, Versehen)
+         wird damit wiederbelebt statt den Start zu verdecken. */
+      return el('button', {
+        type: 'button', class: 'btn btn--primary btn--block',
+        text: 'Training starten',
+        onclick: () => store.setSessionMeta(dayKey, session.id,
+          { startedAt: new Date().toISOString(), endedAt: null }),
+      });
     },
     body: () => {
+      if (justEnded) return finishSummary(store.getState(), dayKey, session);
       const state = store.getState();
       const profile = state.profile;
       const allowance = legVolumeAllowance(dayKey, {

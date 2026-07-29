@@ -139,8 +139,10 @@ function makeDraggable({ handles, panel, dialog, onClose }) {
  * @param {Function} options.body        () => Node, wird bei jeder Änderung neu gerufen
  * @param {Function} [options.footer]    () => Node, klebt am unteren Rand
  * @param {string|Function} [options.doneLabel] Text des Schließen-Knopfes —
- *   als Funktion, wenn er sich mit dem Zustand ändern soll („Training
- *   beenden" wird nach dem Beenden zu „Schließen")
+ *   als Funktion, wenn er sich mit dem Zustand ändern soll
+ * @param {string|Function} [options.doneTone] 'primary' | 'ghost' — der
+ *   Schließen-Knopf tritt zurück, wenn im Footer eine wichtigere Handlung
+ *   steht („Training abschließen" gewinnt gegen „Schließen")
  * @param {Function} [options.onDone]    NUR beim Schließen-Knopf, vor dem
  *   Schließen. Der Unterschied zu onClose ist der Punkt: Wegwischen ist kein
  *   Abschließen.
@@ -149,7 +151,8 @@ function makeDraggable({ handles, panel, dialog, onClose }) {
  */
 export function openSheet({
   store, title, eyebrow = null, body, footer = null,
-  doneLabel = 'Abgeschlossen', onDone = null, onClose = null, tone = null,
+  doneLabel = 'Abgeschlossen', doneTone = 'primary',
+  onDone = null, onClose = null, tone = null,
 }) {
   // Ein noch offenes Fenster verschwindet sofort, nicht mit Animation:
   // sonst liegen zwei übereinander.
@@ -198,11 +201,12 @@ export function openSheet({
       const found = bodySlot.querySelector(`details[data-keep="${keep}"]`);
       if (found) found.open = true;
     }
+    const doneToneNow = typeof doneTone === 'function' ? doneTone() : doneTone;
     replace(footSlot,
       footer ? footer() : null,
       el('button', {
         type: 'button',
-        class: 'btn btn--primary btn--block',
+        class: `btn btn--block btn--${doneToneNow === 'ghost' ? 'ghost' : 'primary'}`,
         text: typeof doneLabel === 'function' ? doneLabel() : doneLabel,
         onclick: () => {
           if (onDone) onDone();

@@ -35,9 +35,12 @@
  *   v15 Trainingsuhr endet nur noch auf „Training beenden", Pause läuft an
  *       der Übung und in der angehefteten Kopfleiste, Ansichtswechsel
  *       gleiten, toter Platzhalter-Code entfernt
+ *   v16 Stoppuhr-Flow: „Training starten" im Fenster (für Einheiten abseits
+ *       des heutigen Plans), „Training abschließen" zeigt ein Abschlussbild
+ *       mit Dauer, Sätzen und bewegtem Gewicht
  */
 
-const CACHE_VERSION = 'v15';
+const CACHE_VERSION = 'v16';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [

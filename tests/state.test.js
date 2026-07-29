@@ -337,6 +337,26 @@ suite('state — Trainingsuhr', () => {
     eq(getSession(s, '2026-07-25', 'c-legs'), null);
   });
 
+  test('beendete leere Hüllen verschwinden an jedem Tag, auch in der Zukunft', () => {
+    // Artefakte aus Altversionen: beendet, aber ohne einen Satz. Sie würden
+    // sonst als „fertige Einheit" den Startknopf verdecken.
+    let s = withSessionMeta(base(), '2026-07-30', 'c-legs', {
+      startedAt: '2026-07-28T09:00:00.000Z',
+      endedAt: '2026-07-28T09:00:02.000Z',
+    });
+    s = withStaleSessionsClosed(s, '2026-07-28');
+    eq(getSession(s, '2026-07-30', 'c-legs'), null);
+  });
+
+  test('beendete Einheiten MIT Sätzen bleiben unangetastet', () => {
+    let s = withSet(base(), '2026-07-30', 'c-legs', 'rdl_db', 0, { reps: 8, kg: 40 });
+    s = withSessionMeta(s, '2026-07-30', 'c-legs', {
+      startedAt: '2026-07-28T09:00:00.000Z',
+      endedAt: '2026-07-28T10:00:00.000Z',
+    });
+    eq(withStaleSessionsClosed(s, '2026-07-28'), s, 'dasselbe Objekt, kein Umbau');
+  });
+
   test('die laufende Einheit von HEUTE bleibt unangetastet', () => {
     let s = withSessionMeta(base(), '2026-07-27', 'a-push',
       { startedAt: '2026-07-27T18:00:00.000Z' });
@@ -344,14 +364,6 @@ suite('state — Trainingsuhr', () => {
     eq(getSession(s, '2026-07-27', 'a-push').endedAt, null, 'heute läuft weiter');
   });
 
-  test('beendete und satzlose Einheiten lassen den Zustand unverändert', () => {
-    let s = withSessionMeta(base(), '2026-07-25', 'c-legs', {
-      startedAt: '2026-07-25T18:00:00.000Z',
-      endedAt: '2026-07-25T19:00:00.000Z',
-    });
-    eq(withStaleSessionsClosed(s, '2026-07-27'), s,
-      'nichts zu tun → dasselbe Objekt, kein unnötiges Speichern');
-  });
 });
 
 suite('state — letztes Mal', () => {

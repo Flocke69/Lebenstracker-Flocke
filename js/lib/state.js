@@ -299,28 +299,41 @@ export function sessionMinutes(session, now = Date.now()) {
 }
 
 /**
- * Vergessene Trainingsuhren schließen.
+ * Vergessene Trainingsuhren schließen und leere Hüllen wegräumen.
  *
  * Das Wegwischen des Trainingsfensters beendet die Einheit NICHT — die Uhr
  * läuft weiter, damit „weiterführen" die echte Dauer behält. Der Preis: wer
- * nie auf „Training beenden" tippt, hätte eine ewig laufende Uhr. Deshalb wird
- * beim App-Start jede laufende Einheit eines VERGANGENEN Tages geschlossen —
- * rückwirkend auf den letzten geloggten Satz, den ehrlichsten bekannten
- * Endpunkt. Eine laufende Einheit ganz ohne Sätze war kein Training: sie
- * verschwindet, statt mit Dauer null als Trainingstag herumzustehen.
+ * nie auf „Training abschließen" tippt, hätte eine ewig laufende Uhr.
+ * Deshalb räumt jeder App-Start auf:
+ *
+ *   Eine LAUFENDE Einheit eines vergangenen Tages wird geschlossen —
+ *   rückwirkend auf den letzten geloggten Satz, den ehrlichsten bekannten
+ *   Endpunkt. Ohne einen einzigen Satz war sie kein Training und verschwindet.
+ *
+ *   Eine BEENDETE Einheit ganz ohne Sätze (Artefakt aus Versehen oder
+ *   Altversion) verschwindet ebenfalls — egal an welchem Tag. Sie würde
+ *   sonst als „fertige Einheit" den Startknopf verdecken und in keiner
+ *   Auswertung etwas Wahres beitragen.
+ *
+ * Die laufende Einheit von HEUTE (oder einem noch kommenden Tag) bleibt
+ * unangetastet — die gehört dem, der gerade trainiert.
  */
 export function withStaleSessionsClosed(state, today) {
   parseKey(today);
   let next = state;
   for (const [dayKey, day] of Object.entries(state.days ?? {})) {
-    if (dayKey >= today) continue;
     for (const session of day.sessions ?? []) {
-      if (session.startedAt && !session.endedAt) {
-        next = hasLoggedSets(session)
-          ? withSessionMeta(next, dayKey, session.planId, {
+      const empty = !hasLoggedSets(session) && session.sessionRpe == null;
+      const running = Boolean(session.startedAt && !session.endedAt);
+
+      if (running && dayKey < today) {
+        next = empty
+          ? withoutSession(next, dayKey, session.planId)
+          : withSessionMeta(next, dayKey, session.planId, {
             endedAt: session.lastSetAt ?? session.startedAt,
-          })
-          : withoutSession(next, dayKey, session.planId);
+          });
+      } else if (empty && session.endedAt) {
+        next = withoutSession(next, dayKey, session.planId);
       }
     }
   }

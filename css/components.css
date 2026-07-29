@@ -1423,6 +1423,60 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 .rest--over .rest__go { display: inline; }
 .rest--over .rest__bump { display: none; }
 
+/* ─── Abschlussbild nach „Training abschließen" ─────────────────────────── */
+
+/* Ein Screen, eine Zahl: so lange war ich im Gym. Die Dauer bekommt die
+   Hero-Größe — sie ist der Grund, warum die Stoppuhr existiert. */
+.finish {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+}
+
+.finish__time {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-hero);
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
+  color: var(--good-500);
+}
+
+.finish__label {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.finish__stats {
+  display: flex;
+  gap: var(--space-6);
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line-200);
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.finish__stat b {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.finish__note {
+  margin: var(--space-6) 0 0;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  max-width: 18rem;
+}
+
 /* ─── Trainings-Logger ──────────────────────────────────────────────────── */
 
 .block {
