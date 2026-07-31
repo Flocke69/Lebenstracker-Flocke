@@ -38,9 +38,12 @@
  *   v16 Stoppuhr-Flow: „Training starten" im Fenster (für Einheiten abseits
  *       des heutigen Plans), „Training abschließen" zeigt ein Abschlussbild
  *       mit Dauer, Sätzen und bewegtem Gewicht
+ *   v17 Beintag neu (Bizeps vor Trizeps, Beinbeuger, Kniebeuge, RDL,
+ *       Beinstrecker), Wiederholungen während der Pause gesperrt, grüner
+ *       Bildschirm nach der Pause, Abschließen fragt nach offenen Übungen
  */
 
-const CACHE_VERSION = 'v16';
+const CACHE_VERSION = 'v17';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [

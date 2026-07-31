@@ -126,13 +126,19 @@ export const SESSIONS = Object.freeze([
     blocks: [
       {
         name: null,
+        /* Reihenfolge nach Flockes Ansage vom 30. Juli 2026: Bizeps vor
+           Trizeps, dann Beinbeuger, Kniebeuge, RDLs, Beinstrecker. Der
+           Beinbeuger steht VOR der Kniebeuge — isolierte Beugerarbeit stört
+           das schwere Beugen danach nicht, umgekehrt wäre der Beuger platt.
+           Bulgarische Kniebeuge und Adduktorenmaschine sind damit raus; sie
+           bleiben im Katalog, damit die alten Logs auswertbar bleiben. */
         exercises: [
-          { id: 'triceps_pushdown', sets: 3, repsMin: 8, repsMax: 12, rpe: 9 },
           { id: 'curl_cable', sets: 3, repsMin: 8, repsMax: 12, rpe: 9 },
-          { id: 'rdl_db', sets: 3, repsMin: 4, repsMax: 8, rpe: 8 },
-          { id: 'split_squat_bulgarian', sets: 3, repsMin: 6, repsMax: 10, rpe: 8 },
+          { id: 'triceps_pushdown', sets: 3, repsMin: 8, repsMax: 12, rpe: 9 },
+          { id: 'leg_curl_machine', sets: 3, repsMin: 8, repsMax: 12, rpe: 9 },
+          { id: 'squat_bb', sets: 3, repsMin: 4, repsMax: 8, rpe: 8 },
+          { id: 'rdl_db', sets: 2, repsMin: 6, repsMax: 10, rpe: 8 },
           { id: 'leg_extension', sets: 2, repsMin: 6, repsMax: 10, rpe: 9 },
-          { id: 'adductor_machine', sets: 2, repsMin: 6, repsMax: 10, rpe: 9 },
         ],
       },
     ],

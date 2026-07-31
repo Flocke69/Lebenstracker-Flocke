@@ -138,8 +138,13 @@ function makeDraggable({ handles, panel, dialog, onClose }) {
  * @param {string}   [options.eyebrow]   kleine Zeile darüber
  * @param {Function} options.body        () => Node, wird bei jeder Änderung neu gerufen
  * @param {Function} [options.footer]    () => Node, klebt am unteren Rand
+ * @param {Function} [options.overlay]   () => Node, legt sich über ALLES —
+ *   Kopf, Körper und Fuß. Für den einen Fall, in dem das Fenster den
+ *   Bildschirm übernehmen darf: die abgelaufene Satzpause.
  * @param {string|Function} [options.doneLabel] Text des Schließen-Knopfes —
- *   als Funktion, wenn er sich mit dem Zustand ändern soll
+ *   als Funktion, wenn er sich mit dem Zustand ändern soll. Liefert sie
+ *   `null`, gibt es gerade keinen Schließen-Knopf: dann steht im Fuß eine
+ *   Entscheidung, an der man nicht vorbeigehen soll.
  * @param {string|Function} [options.doneTone] 'primary' | 'ghost' — der
  *   Schließen-Knopf tritt zurück, wenn im Footer eine wichtigere Handlung
  *   steht („Training abschließen" gewinnt gegen „Schließen")
@@ -150,7 +155,7 @@ function makeDraggable({ handles, panel, dialog, onClose }) {
  * @param {string}   [options.tone]      'good' | 'ok' | 'bad' — färbt die Kopfkante
  */
 export function openSheet({
-  store, title, eyebrow = null, body, footer = null,
+  store, title, eyebrow = null, body, footer = null, overlay = null,
   doneLabel = 'Abgeschlossen', doneTone = 'primary',
   onDone = null, onClose = null, tone = null,
 }) {
@@ -160,6 +165,9 @@ export function openSheet({
 
   const bodySlot = el('div', { class: 'sheet__body' });
   const footSlot = el('div', { class: 'sheet__foot' });
+  /* Liegt AUSSERHALB des Fensters, im Dialog selbst — sonst könnte es nur
+     den scrollenden Körper verdecken und nicht den Bildschirm. */
+  const overSlot = el('div', { class: 'sheet__overlay' });
 
   const grip = el('button', {
     type: 'button',
@@ -182,7 +190,8 @@ export function openSheet({
     }));
 
   const panel = el('div', { class: 'sheet__panel' }, grip, head, bodySlot, footSlot);
-  const dialog = el('dialog', { class: `sheet${tone ? ` sheet--${tone}` : ''}` }, panel);
+  const dialog = el('dialog', { class: `sheet${tone ? ` sheet--${tone}` : ''}` },
+    panel, overSlot);
 
   function draw() {
     /* Der Körper wird bei jeder Eingabe komplett neu gebaut. Ohne die zwei
@@ -202,17 +211,20 @@ export function openSheet({
       if (found) found.open = true;
     }
     const doneToneNow = typeof doneTone === 'function' ? doneTone() : doneTone;
+    const label = typeof doneLabel === 'function' ? doneLabel() : doneLabel;
     replace(footSlot,
       footer ? footer() : null,
-      el('button', {
+      label === null ? null : el('button', {
         type: 'button',
         class: `btn btn--block btn--${doneToneNow === 'ghost' ? 'ghost' : 'primary'}`,
-        text: typeof doneLabel === 'function' ? doneLabel() : doneLabel,
+        text: label,
         onclick: () => {
           if (onDone) onDone();
           closeSheet();
         },
       }));
+
+    if (overlay) replace(overSlot, overlay());
   }
 
   document.body.append(dialog);

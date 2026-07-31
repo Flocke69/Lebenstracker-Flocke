@@ -20,6 +20,7 @@ import {
   withStaleSessionsClosed,
   sessionMinutes,
   lastPerformance,
+  skippedExercises,
 } from '../js/lib/state.js';
 
 const PROFILE = {
@@ -364,6 +365,54 @@ suite('state — Trainingsuhr', () => {
     eq(getSession(s, '2026-07-27', 'a-push').endedAt, null, 'heute läuft weiter');
   });
 
+});
+
+suite('state — ausgelassene Übungen', () => {
+  const base = () => withProfile(emptyState('2026-07'), PROFILE);
+
+  test('eine neue Einheit hat noch nichts ausgelassen', () => {
+    const s = withSessionMeta(base(), '2026-07-30', 'c-legs',
+      { startedAt: '2026-07-30T18:00:00.000Z' });
+    deepEq(skippedExercises(getSession(s, '2026-07-30', 'c-legs')), []);
+  });
+
+  test('beim Abschließen entfallene Übungen bleiben an der Einheit', () => {
+    let s = withSet(base(), '2026-07-30', 'c-legs', 'squat_bb', 0, { reps: 6, kg: 60 });
+    s = withSessionMeta(s, '2026-07-30', 'c-legs',
+      { skipped: ['leg_curl_machine', 'leg_extension'] });
+    deepEq(skippedExercises(getSession(s, '2026-07-30', 'c-legs')),
+      ['leg_curl_machine', 'leg_extension']);
+  });
+
+  test('EIN GELOGGTER SATZ HOLT DIE ÜBUNG ZURÜCK', () => {
+    /* Wer eine entfallene Übung doch noch macht, hat sie nicht ausgelassen.
+       Das ergibt sich aus dem Log selbst — es braucht keinen zweiten
+       Schreibvorgang, der auseinanderlaufen könnte. */
+    let s = withSessionMeta(base(), '2026-07-30', 'c-legs',
+      { skipped: ['leg_curl_machine', 'leg_extension'] });
+    s = withSet(s, '2026-07-30', 'c-legs', 'leg_extension', 0, { reps: 10, kg: 45 });
+    deepEq(skippedExercises(getSession(s, '2026-07-30', 'c-legs')), ['leg_curl_machine']);
+  });
+
+  test('lauter Lücken holen nichts zurück', () => {
+    // Ein Übungseintrag ohne einen einzigen gefüllten Satz ist kein Training.
+    deepEq(skippedExercises({
+      planId: 'c-legs',
+      skipped: ['leg_extension'],
+      exercises: [{ exId: 'leg_extension', sets: [null, null] }],
+    }), ['leg_extension']);
+  });
+
+  test('skipped muss eine Liste von Kennungen sein', () => {
+    throws(() => withSessionMeta(base(), '2026-07-30', 'c-legs', { skipped: 'rdl_db' }));
+    throws(() => withSessionMeta(base(), '2026-07-30', 'c-legs', { skipped: [7] }));
+  });
+
+  test('alte Einheiten ohne das Feld sind einfach leer', () => {
+    // Zustände aus einer Version vor dieser Änderung kennen `skipped` nicht.
+    deepEq(skippedExercises({ planId: 'c-legs', exercises: [] }), []);
+    deepEq(skippedExercises(null), []);
+  });
 });
 
 suite('state — letztes Mal', () => {

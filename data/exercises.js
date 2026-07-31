@@ -252,6 +252,29 @@ export const EXERCISES = Object.freeze({
     note: 'Die einzige Übung, die den Oberschenkel vorne isoliert trifft. '
         + 'Oben kurz halten, nicht in die Endstellung schnalzen.',
   },
+  leg_curl_machine: {
+    name: 'Beinbeuger',
+    variant: 'Maschine',
+    primary: 'hamstrings',
+    secondary: [],
+    loadsLegs: true,
+    note: 'Das Gegenstück zum Beinstrecker: der Oberschenkel hinten, isoliert '
+        + 'und ohne Rücken. Steht vor der Kniebeuge, weil er dort nichts '
+        + 'kaputtmacht — vorermüdet ist die Beuger-Arbeit hinterher nur besser.',
+  },
+  squat_bb: {
+    name: 'Kniebeuge',
+    variant: 'Langhantel',
+    primary: 'quads',
+    // Bewusst nur das Gesäß als Nebengruppe: den Rücken mitzuzählen würde das
+    // Rückenvolumen der Woche aufblähen, obwohl er hier nur hält.
+    secondary: ['glutes'],
+    loadsLegs: true,
+    note: 'Die schwerste Übung im Plan. Wenig Wiederholungen, viel Gewicht — '
+        + 'Muskelkater am Sonntag kommt von Wiederholungen, nicht von Kilos. '
+        + 'Tief genug, dass die Hüfte unter das Knie kommt, und keinen Satz '
+        + 'bis zum Versagen.',
+  },
   adductor_machine: {
     name: 'Adduktoren',
     variant: 'Maschine, Beine zusammen',

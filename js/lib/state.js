@@ -218,11 +218,12 @@ export function withDay(state, key, patch) {
 /* ─── Trainingseinheiten ─────────────────────────────────────────────────── */
 
 /** Leere Einheit. `startedAt`/`endedAt` tragen die Trainingsdauer,
- *  `lastSetAt` den Zeitpunkt des letzten geloggten Satzes. */
+ *  `lastSetAt` den Zeitpunkt des letzten geloggten Satzes,
+ *  `skipped` die beim Abschließen ausgelassenen Übungen. */
 export function emptySession(planId) {
   return {
     planId, exercises: [], sessionRpe: null,
-    startedAt: null, endedAt: null, lastSetAt: null,
+    startedAt: null, endedAt: null, lastSetAt: null, skipped: [],
   };
 }
 
@@ -234,6 +235,27 @@ export function getSession(state, dayKey, planId) {
 /** Trägt diese Einheit mindestens einen geloggten Satz? */
 export function hasLoggedSets(session) {
   return (session?.exercises ?? []).some((e) => (e.sets ?? []).some(Boolean));
+}
+
+/**
+ * Die Übungen, die in DIESER Einheit ausgelassen wurden.
+ *
+ * Beim Abschließen fragt das Trainingsfenster nach, wenn geplante Übungen
+ * ohne einen einzigen Satz dastehen. Wer bestätigt, lässt sie entfallen —
+ * die Einheit ist damit vollständig und nicht halb abgebrochen.
+ *
+ * SELBSTHEILEND: sobald für eine ausgelassene Übung doch ein Satz im Log
+ * steht, ist sie keine ausgelassene mehr. Das spart den zweiten
+ * Schreibvorgang und kann gar nicht erst auseinanderlaufen — der Satz ist
+ * die stärkere Aussage.
+ */
+export function skippedExercises(session) {
+  const logged = new Set(
+    (session?.exercises ?? [])
+      .filter((e) => (e.sets ?? []).some(Boolean))
+      .map((e) => e.exId)
+  );
+  return (session?.skipped ?? []).filter((id) => !logged.has(id));
 }
 
 /**
@@ -271,6 +293,13 @@ export function withSessionMeta(state, dayKey, planId, patch) {
   }
   if ('sessionRpe' in patch && patch.sessionRpe !== null) {
     assertNumber(patch.sessionRpe, 'sessionRpe', 1, 10);
+  }
+  if ('skipped' in patch) {
+    if (!Array.isArray(patch.skipped) || patch.skipped.some((id) => typeof id !== 'string')) {
+      throw new TypeError(
+        `skipped muss eine Liste von Übungskennungen sein, war: ${patch.skipped}`
+      );
+    }
   }
 
   const day = getDay(state, dayKey);

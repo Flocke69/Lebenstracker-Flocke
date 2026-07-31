@@ -1399,6 +1399,17 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   border-radius: var(--radius-sm);
 }
 
+/* Warum die Wiederholungsfelder gerade nicht gehen — direkt an der Uhr, die
+   sie sperrt. Nach Ablauf verschwindet der Satz mit der Sperre. */
+.rest__lock {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  line-height: var(--leading-normal);
+}
+
+.rest--over .rest__lock { display: none; }
+
 .rest__tools {
   display: flex;
   gap: var(--space-2);
@@ -1422,6 +1433,102 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 .rest--over .rest__time { display: none; }
 .rest--over .rest__go { display: inline; }
 .rest--over .rest__bump { display: none; }
+
+/* ─── Der grüne Bildschirm, wenn die Pause um ist ───────────────────────── */
+
+/* Die Ablage liegt im Dialog, nicht im Fenster — nur so kann sie den ganzen
+   Bildschirm nehmen und nicht bloß den scrollenden Teil. Sie selbst fängt
+   KEINE Tipper ab: solange nichts drin sichtbar ist, geht jeder Klick durch
+   sie hindurch ans Fenster dahinter. */
+.sheet__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+/* Grün, ganzflächig, mit einem Knopf unten. Flockes Vorgabe wörtlich: der
+   Bildschirm wird grün, und er bleibt es, bis man „Schließen" drückt. Deshalb
+   liegt der Kasten schon vorher im Baum und wird nur umgeschaltet — er
+   entsteht nicht erst beim nächsten Neuzeichnen, sondern ist pünktlich da. */
+.restdone {
+  display: none;
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+  background: var(--good-500);
+  color: var(--pitch-900);
+  pointer-events: auto;
+  padding: var(--safe-top) var(--space-4) calc(var(--safe-bottom) + var(--space-4));
+}
+
+.restdone--on {
+  display: flex;
+  animation: restdone-in var(--dur-med) var(--ease);
+}
+
+@keyframes restdone-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .restdone--on { animation: none; }
+}
+
+.restdone__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-2);
+}
+
+.restdone__lead,
+.restdone__shout {
+  margin: 0;
+  font-family: var(--font-display);
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+}
+
+.restdone__lead {
+  font-size: var(--text-2xl);
+}
+
+/* Die Zeile, die aus zwei Metern Entfernung ankommen muss. */
+.restdone__shout {
+  font-size: var(--text-hero);
+}
+
+.restdone__label {
+  margin: var(--space-4) 0 0;
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+/* Dunkel auf Grün: der Knopf muss sich von der Fläche abheben, und ein
+   zweites Grün täte das nicht.
+
+   Zweiteilig geschrieben, weil `.btn` weiter unten in dieser Datei steht:
+   bei gleicher Spezifität gewinnt die spätere Regel, und `.btn` ist die
+   spätere. Der Elternteil davor hebt die Spezifität gerade so weit an, dass
+   die Absicht hier gewinnt. */
+.restdone .restdone__close {
+  background: var(--pitch-900);
+  color: var(--good-500);
+  border-color: var(--pitch-900);
+  font-weight: 600;
+}
+
+.restdone .restdone__close:active {
+  background: var(--pitch-800);
+}
 
 /* ─── Abschlussbild nach „Training abschließen" ─────────────────────────── */
 
@@ -1475,6 +1582,62 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   font-size: var(--text-xs);
   color: var(--ink-muted);
   max-width: 18rem;
+}
+
+/* ─── Nachfrage vor dem Abschließen ─────────────────────────────────────── */
+
+/* Offene Übungen beim Namen nennen, bevor sie entfallen. Kein Systemdialog:
+   der kann keine Liste, und in einer zum Homescreen hinzugefügten App kommt
+   er manchmal gar nicht erst an. */
+.confirm {
+  padding: var(--space-4) 0;
+}
+
+.confirm__lead {
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}
+
+.confirm__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--ok-edge);
+  border-radius: var(--radius-md);
+  background: var(--ok-fill);
+}
+
+.confirm__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.confirm__row + .confirm__row {
+  border-top: 1px solid var(--line-200);
+}
+
+.confirm__name {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.confirm__target {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  color: var(--ok-500);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.confirm__note {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+  line-height: var(--leading-normal);
 }
 
 /* ─── Trainings-Logger ──────────────────────────────────────────────────── */
@@ -1601,6 +1764,19 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   color: var(--ink-muted);
 }
 
+/* Beim Abschließen entfallen lassen. Sie bleibt sichtbar, aber ohne Zeilen —
+   und mit einem Knopf, der sie zurückholt. Wegblenden würde aussehen, als
+   fehlte etwas im Plan. */
+.exercise--skipped {
+  border-style: dashed;
+  background: none;
+}
+
+.exercise--skipped .exercise__name {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+}
+
 .setrow {
   display: grid;
   grid-template-columns: 1.6rem 1fr 1fr 1.2rem;
@@ -1640,6 +1816,15 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   padding: var(--space-2) var(--space-3);
   text-align: center;
   background: var(--pitch-800);
+}
+
+/* Gesperrt, solange die Pause läuft: nur die Wiederholungen, nie das Gewicht.
+   Das Feld bleibt an seinem Platz und lesbar — es sieht aus wie ausgeschaltet,
+   nicht wie verschwunden, sonst würde die Zeile bei jedem Satz zappeln. */
+.setrow input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-style: dashed;
 }
 
 .setrow__head {

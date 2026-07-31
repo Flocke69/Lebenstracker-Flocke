@@ -27,12 +27,19 @@
  * Messwert, sie hat in der Exportdatei nichts zu suchen. Gespeichert wird sie
  * trotzdem — wer während des Trainings die App wegwischt, soll den Countdown
  * beim Zurückkommen weiterlaufen sehen.
+ *
+ * WÄHREND DER PAUSE GEHEN KEINE WIEDERHOLUNGEN REIN. Flockes Vorgabe, und
+ * sie ist logisch: eine laufende Pause heißt, dass der letzte Satz vorbei ist
+ * und der nächste noch nicht angefangen hat. Es gibt in diesem Moment keine
+ * Wiederholung, die man ehrlich eintragen könnte — wohl aber ein Gewicht, das
+ * man für den nächsten Satz schon an der Hantel stehen hat. Also: Gewichte
+ * ja, Wiederholungen nein.
  */
 
 import { formatDayShort, formatDayLong, todayKey } from '../lib/dates.js';
 import {
   getDay, getSets, getSession, lastPerformance, sessionMinutes,
-  hasLoggedSets, withoutSession,
+  hasLoggedSets, withoutSession, skippedExercises,
 } from '../lib/state.js';
 import { legVolumeAllowance, exerciseBlockReason } from '../lib/planner.js';
 import { readinessScore, trainingGuidance } from '../lib/readiness.js';
@@ -53,6 +60,18 @@ const REST_BUMP = 30;
 
 /** Unter dieser Restzeit gilt die Pause als Endphase (Anzeige springt um). */
 const REST_SOON = 10;
+
+/**
+ * So lange wartet der grüne Bildschirm auf „Schließen".
+ *
+ * Die abgelaufene Pause verschwindet NICHT von selbst — sie wird weggetippt.
+ * Trotzdem braucht sie eine Grenze: wer das Fenster wegwischt und zwei
+ * Stunden später denselben Tag noch mal öffnet, will nicht von einem grünen
+ * Bildschirm begrüßt werden, der zu einem Satz von vorhin gehört. Eine halbe
+ * Stunde ist länger als jeder Gang zur Toilette und kürzer als jede Pause,
+ * die noch etwas bedeutet.
+ */
+const REST_OVER_GRACE_MS = 30 * 60_000;
 
 const REST_STORAGE_KEY = 'lebenstracker.rest';
 
@@ -82,14 +101,13 @@ function writeRest(value) {
  *
  * Der Eintrag trägt Tag und Einheit, damit ein Fenster nie den Countdown
  * eines anderen Trainings zeigt — etwa wenn nach dem Wegwischen ein alter
- * Tag zum Nachtragen geöffnet wird. Abgelaufene Pausen zählen noch kurz als
- * „vorbei"-Anzeige, danach nicht mehr.
+ * Tag zum Nachtragen geöffnet wird. Abgelaufene Pausen zählen weiter als
+ * „vorbei"-Anzeige, bis sie weggetippt sind oder zu alt werden.
  */
 function restFor(dayKey, planId) {
   const rest = readRest();
   if (!rest || rest.dayKey !== dayKey || rest.planId !== planId) return null;
-  // Eine Minute nach Ablauf ist die Pause Geschichte, keine Anzeige mehr wert.
-  if (rest.until + 60_000 <= Date.now()) return null;
+  if (rest.until + REST_OVER_GRACE_MS <= Date.now()) return null;
   return rest;
 }
 
@@ -109,6 +127,9 @@ const restPhase = (rest) => {
   if (left <= REST_SOON) return 'soon';
   return 'run';
 };
+
+/** Läuft die Uhr noch? Genau dann sind die Wiederholungsfelder gesperrt. */
+const restRunning = (rest) => Boolean(rest) && restSecondsLeft(rest) > 0;
 
 /**
  * Der Pausenbalken in der Übungskarte.
@@ -139,6 +160,11 @@ function restBar(rest, redraw) {
         el('span', { class: 'rest__go', text: 'Weiter geht’s' }))),
     el('div', { class: 'rest__track' },
       liveWidth(() => restSecondsLeft(rest) / rest.seconds, { class: 'rest__fill' })),
+    el('p', {
+      class: 'rest__lock',
+      text: 'Wiederholungen sind gesperrt, solange die Pause läuft — '
+        + 'Gewichte kannst du schon eintragen.',
+    }),
     el('div', { class: 'rest__tools' },
       el('button', {
         type: 'button', class: 'btn btn--small rest__bump',
@@ -154,6 +180,41 @@ function restBar(rest, redraw) {
   return liveApply(box, () => restPhase(rest), (node, phase) => {
     node.classList.toggle('rest--soon', phase === 'soon');
     node.classList.toggle('rest--over', phase === 'over');
+  });
+}
+
+/* ─── Der grüne Bildschirm, wenn die Pause um ist ────────────────────────── */
+
+/**
+ * Flockes Vorgabe: ist die Pause vorbei, wird der Bildschirm grün und bleibt
+ * es, bis man unten „Schließen" drückt.
+ *
+ * Warum das so gebaut ist und nicht als eigenes Fenster: der Kasten liegt von
+ * Anfang an im Baum und wird vom Sekundentakt nur SICHTBAR GESCHALTET. Ein
+ * Overlay, das erst beim Neuzeichnen entsteht, käme nämlich genau dann nicht —
+ * das Fenster zeichnet nur bei Eingaben neu, und während der Pause tippt
+ * niemand. Man würde also warten, bis man selbst etwas tut, um zu erfahren,
+ * dass man nicht mehr warten muss.
+ *
+ * Er verschwindet NUR auf Tastendruck. Das ist der Punkt: ein grüner Blitz,
+ * den man verpasst, während man zum Trinken geht, ist kein Signal.
+ */
+function restDone(rest, onClose) {
+  const box = el('div', { class: 'restdone', role: 'status' },
+    el('div', { class: 'restdone__body' },
+      el('p', { class: 'restdone__lead', text: 'Weiter geht’s' }),
+      el('p', { class: 'restdone__shout', text: 'du Maschine 🔥' }),
+      el('p', { class: 'restdone__label', text: rest.label })),
+    el('div', { class: 'restdone__foot' },
+      el('button', {
+        type: 'button',
+        class: 'btn btn--block restdone__close',
+        text: 'Schließen',
+        onclick: onClose,
+      })));
+
+  return liveApply(box, () => restPhase(rest) === 'over', (node, over) => {
+    node.classList.toggle('restdone--on', over);
   });
 }
 
@@ -258,6 +319,10 @@ function setRow(store, dayKey, planId, exId, index, set, entry, redraw) {
   return el('div', { class: `setrow${done ? ' setrow--done' : ''}` },
     el('span', { class: 'setrow__index', text: String(index + 1) }),
     decimalInput({
+      /* Die Klasse ist kein Schmuck: über sie findet der Sekundentakt in
+         openSession alle Wiederholungsfelder, um sie während der Pause zu
+         sperren und danach wieder freizugeben. */
+      class: 'setrow__reps',
       value: toInputValue(set?.reps ?? null),
       placeholder: entry.unit === 'Sekunden' ? 'Sek.' : 'Wdh.',
       'aria-label': `Satz ${index + 1}, Wiederholungen`,
@@ -307,13 +372,38 @@ function lastText(state, dayKey, exId) {
  *
  * Die Satzpause steht als fester Wert an jeder Übung — und läuft sie, dann
  * liegt der Countdown-Balken GENAU HIER, unter den Satzzeilen dieser Übung.
+ *
+ * EINE ENTFALLENE ÜBUNG BLEIBT STEHEN, aber ohne Zeilen. Wer sie beim
+ * Abschließen hat entfallen lassen, soll sehen, dass es sie gab — und sie mit
+ * einem Tipp zurückholen können. Sie wegzublenden würde aussehen wie ein
+ * Fehler im Plan.
  */
-function exerciseCard(store, state, dayKey, planId, entry, setsDelta, legLevel, rest, redraw) {
+function exerciseCard(
+  store, state, dayKey, planId, entry, setsDelta, legLevel, rest, skipped, unskip, redraw
+) {
   const ex = exercise(entry.id);
   const blocked = exerciseBlockReason(
     { loadsLegs: EXERCISES[entry.id].loadsLegs, prophylaxis: entry.prophylaxis },
     legLevel
   );
+
+  if (skipped) {
+    return el('div', { class: 'exercise exercise--skipped' },
+      el('div', { class: 'card__head' },
+        el('span', null,
+          el('span', { class: 'exercise__name', text: ex.name }),
+          ex.variant ? el('span', { class: 'exercise__variant', text: ` ${ex.variant}` }) : null),
+        el('span', { class: 'chip', text: 'entfallen' })),
+      el('p', {
+        class: 'exercise__last',
+        text: 'Für dieses Training entfallen — sie zählt nicht als offen.',
+      }),
+      el('button', {
+        type: 'button', class: 'btn btn--small btn--ghost',
+        text: 'doch noch machen',
+        onclick: unskip,
+      }));
+  }
 
   const plannedSets = entry.sets;
   // Empfehlung, nicht Vorgabe. Nie unter einen Satz, nie über den Plan.
@@ -411,6 +501,56 @@ function finishSummary(state, dayKey, session) {
     }));
 }
 
+/* ─── Die Nachfrage vor dem Abschließen ──────────────────────────────────── */
+
+/**
+ * Was auf dem Screen steht, wenn beim Abschließen noch Übungen offen sind.
+ *
+ * Flockes Vorgabe: abschließen können MUSS gehen, auch wenn eine Übung
+ * ausfällt — die Maschine war belegt, die Zeit war um, der Rücken hat gezwickt.
+ * Aber nicht stillschweigend. Deshalb steht hier namentlich, worum es geht,
+ * bevor irgendetwas geschrieben wird.
+ *
+ * Warum ein Bild im Fenster und kein confirm(): ein Systemdialog kann keine
+ * Liste zeigen, sieht auf dem iPhone aus wie ein Fehler und wird in einer zum
+ * Homescreen hinzugefügten App gerne mal ganz unterdrückt. Eine Frage, die
+ * nicht ankommt, ist schlimmer als keine.
+ */
+function finishConfirm(open) {
+  return el('div', { class: 'confirm' },
+    el('span', { class: 'eyebrow', text: 'Wirklich abschließen?' }),
+    el('p', {
+      class: 'confirm__lead',
+      text: open.length === 1
+        ? 'Eine geplante Übung steht noch ohne einen einzigen Satz da:'
+        : `${open.length} geplante Übungen stehen noch ohne einen einzigen Satz da:`,
+    }),
+    el('ul', { class: 'confirm__list' },
+      open.map((entry) => {
+        const ex = exercise(entry.id);
+        return el('li', { class: 'confirm__row' },
+          el('span', { class: 'confirm__name' },
+            ex.name,
+            ex.variant
+              ? el('span', { class: 'exercise__variant', text: ` ${ex.variant}` })
+              : null),
+          el('span', {
+            class: 'confirm__target',
+            text: `${entry.sets}×${entry.repsMin}–${entry.repsMax}`,
+          }));
+      })),
+    el('p', {
+      class: 'confirm__note',
+      text: open.length === 1
+        ? 'Schließt du jetzt ab, entfällt sie für dieses Training. Sie zählt '
+          + 'dann nicht mehr als offen, und die Satzzahl oben rechnet ohne sie. '
+          + 'Im Plan steht sie nächste Woche wieder.'
+        : 'Schließt du jetzt ab, entfallen sie für dieses Training. Sie zählen '
+          + 'dann nicht mehr als offen, und die Satzzahl oben rechnet ohne sie. '
+          + 'Im Plan stehen sie nächste Woche wieder.',
+    }));
+}
+
 /* ─── Fenster ────────────────────────────────────────────────────────────── */
 
 /**
@@ -430,6 +570,10 @@ function finishSummary(state, dayKey, session) {
  * „Schließen", Wegwischen, ×, Escape — alles lässt die Uhr weiterlaufen und
  * die Trainingsseite zeigt „läuft". Nur „Training abschließen" beendet.
  * Abschließen ohne einen einzigen Satz verwirft die leere Einheit.
+ *
+ * ABSCHLIESSEN GEHT IMMER — aber offene Übungen werden vorher benannt. Wer
+ * bestätigt, lässt sie für DIESES Training entfallen; der Plan selbst bleibt
+ * unangetastet.
  */
 export function openSession(store, dayKey, session) {
   const isToday = dayKey === todayKey();
@@ -446,10 +590,41 @@ export function openSession(store, dayKey, session) {
      später wieder öffnet, sieht ganz normal seine Sätze. */
   let justEnded = false;
 
+  /* Solange hier eine Liste steht, zeigt das Fenster die Nachfrage vor dem
+     Abschließen — und sonst nichts. */
+  let confirming = null;
+
   const liveSession = () => getSession(store.getState(), dayKey, session.id);
   const isRunning = () => {
     const logged = liveSession();
     return Boolean(logged?.startedAt && !logged.endedAt);
+  };
+
+  /* Bereitschaft und Beinsperre für DIESEN Tag. Steht hier und nicht im
+     Körper, weil die Nachfrage beim Abschließen dieselbe Rechnung braucht:
+     eine gesperrte Beinübung ist keine ausgelassene — die hat der Plan
+     selbst zurückgezogen. */
+  const guidanceNow = (state) => {
+    const profile = state.profile;
+    const allowance = legVolumeAllowance(dayKey, {
+      matchDayWeekday: profile.matchDayWeekday,
+      teamTrainingWeekdays: profile.teamTrainingWeekdays ?? [],
+    });
+    return trainingGuidance(readinessScore(getDay(state, dayKey).checkin), allowance);
+  };
+
+  const isBlocked = (entry, legLevel) => Boolean(exerciseBlockReason(
+    { loadsLegs: EXERCISES[entry.id].loadsLegs, prophylaxis: entry.prophylaxis },
+    legLevel
+  ));
+
+  /** Geplante, nicht gesperrte Übungen ohne einen einzigen Satz. */
+  const openExercises = () => {
+    const state = store.getState();
+    const legLevel = guidanceNow(state).legLevel;
+    return sessionExercises(session).filter((entry) =>
+      !isBlocked(entry, legLevel)
+      && getSets(state, dayKey, session.id, entry.id).filter(Boolean).length === 0);
   };
 
   const finish = () => {
@@ -467,13 +642,49 @@ export function openSession(store, dayKey, session) {
     store.setSessionMeta(dayKey, session.id, { endedAt: new Date().toISOString() });
   };
 
+  /**
+   * „Training abschließen" — mit Nachfrage, wenn Übungen offen sind.
+   *
+   * Ohne einen einzigen geloggten Satz wird NICHT gefragt: da gibt es keine
+   * ausgelassene Übung, da gibt es nur kein Training. Diese Einheit wird
+   * verworfen, und eine Frage danach wäre eine Frage zu viel.
+   */
+  const askFinish = () => {
+    const logged = liveSession();
+    if (!logged || !hasLoggedSets(logged)) { finish(); return; }
+
+    const open = openExercises();
+    if (open.length === 0) { finish(); return; }
+    confirming = open;
+    redraw();
+  };
+
+  const confirmFinish = () => {
+    const ids = confirming.map((entry) => entry.id);
+    /* Erst den Merker löschen, dann schreiben: jeder Schreibvorgang zeichnet
+       das Fenster neu, und es soll dabei nicht noch einmal die Frage zeigen,
+       die gerade beantwortet wurde. */
+    confirming = null;
+    store.setSessionMeta(dayKey, session.id, { skipped: ids });
+    finish();
+  };
+
+  /** Eine entfallene Übung zurückholen. */
+  const unskip = (exId) => {
+    const current = skippedExercises(liveSession());
+    store.setSessionMeta(dayKey, session.id,
+      { skipped: current.filter((id) => id !== exId) });
+  };
+
   handle = openSheet({
     /* Zustand BEIM ÖFFNEN: eine beendete Einheit heißt nicht „läuft", nur
        weil heute ist. Der Fuß des Fensters zieht bei jedem Zeichnen nach. */
     store,
     eyebrow: isRunning() ? 'Training läuft' : isToday ? 'Heute' : formatDayLong(dayKey),
     title: session.name,
-    doneLabel: 'Schließen',
+    /* Während der Nachfrage gibt es KEIN „Schließen": dort stehen zwei
+       Antworten, und an einer davon soll man nicht vorbeikommen. */
+    doneLabel: () => (confirming ? null : 'Schließen'),
     /* „Schließen" tritt zurück, solange unten eine wichtigere Handlung
        steht — Starten oder Abschließen. */
     doneTone: () => {
@@ -483,11 +694,27 @@ export function openSession(store, dayKey, session) {
     },
     footer: () => {
       if (justEnded) return null;
+      if (confirming) {
+        return [
+          el('button', {
+            type: 'button', class: 'btn btn--primary btn--block',
+            text: confirming.length === 1
+              ? 'Abschließen, Übung entfällt'
+              : 'Abschließen, Übungen entfallen',
+            onclick: confirmFinish,
+          }),
+          el('button', {
+            type: 'button', class: 'btn btn--block btn--ghost',
+            text: 'Zurück zum Training',
+            onclick: () => { confirming = null; redraw(); },
+          }),
+        ];
+      }
       if (isRunning()) {
         return el('button', {
           type: 'button', class: 'btn btn--primary btn--block',
           text: 'Training abschließen',
-          onclick: finish,
+          onclick: askFinish,
         });
       }
       const logged = liveSession();
@@ -505,32 +732,28 @@ export function openSession(store, dayKey, session) {
     },
     body: () => {
       if (justEnded) return finishSummary(store.getState(), dayKey, session);
+      if (confirming) return finishConfirm(confirming);
       const state = store.getState();
-      const profile = state.profile;
-      const allowance = legVolumeAllowance(dayKey, {
-        matchDayWeekday: profile.matchDayWeekday,
-        teamTrainingWeekdays: profile.teamTrainingWeekdays ?? [],
-      });
-      const readiness = readinessScore(getDay(state, dayKey).checkin);
-      const guidance = trainingGuidance(readiness, allowance);
+      const guidance = guidanceNow(state);
+
+      /* Entfallene Übungen zählen nicht mehr mit — weder als offener Satz
+         noch im Nenner. Genau das heißt „entfällt für dieses Training". */
+      const skipped = new Set(skippedExercises(liveSession()));
 
       /* Gezählt wird gegen den PLAN, nicht gegen die Empfehlung. „7/13" muss
          dieselbe Zahl im Nenner haben wie die Trainingsseite und der Plan —
          sonst bedeutet derselbe Bruch an zwei Stellen etwas anderes. */
       const entries = sessionExercises(session);
       const plannedTotal = entries.reduce((sum, e) => {
-        const blocked = exerciseBlockReason(
-          { loadsLegs: EXERCISES[e.id].loadsLegs, prophylaxis: e.prophylaxis },
-          guidance.legLevel
-        );
-        return sum + (blocked ? 0 : e.sets);
+        if (skipped.has(e.id) || isBlocked(e, guidance.legLevel)) return sum;
+        return sum + e.sets;
       }, 0);
       const doneTotal = totalSets(getDay(state, dayKey).sessions
         .filter((s) => s.planId === session.id));
 
       const rest = restFor(dayKey, session.id);
 
-      return el('div', null,
+      const view = el('div', null,
         sessionBar(
           () => sessionMinutes(liveSession() ?? {}, Date.now()),
           doneTotal, plannedTotal, rest
@@ -574,8 +797,31 @@ export function openSession(store, dayKey, session) {
               exerciseCard(
                 store, state, dayKey, session.id,
                 { ...e, prophylaxis: Boolean(block.prophylaxis) },
-                guidance.setsDelta, guidance.legLevel, rest, redraw
+                guidance.setsDelta, guidance.legLevel, rest,
+                skipped.has(e.id), () => unskip(e.id), redraw
               )))));
+
+      /* DIE SPERRE DER WIEDERHOLUNGSFELDER HÄNGT AM SEKUNDENTAKT, nicht am
+         Neuzeichnen. Sonst bliebe sie nach dem Ablauf der Pause bestehen, bis
+         zufällig etwas anderes das Fenster neu baut — und man könnte nach der
+         Pause nichts eintragen, obwohl sie vorbei ist. Ein einziger Ticker
+         für alle Felder: er schaltet nur bei Wechseln, nicht jede Sekunde. */
+      if (!rest) return view;
+      return liveApply(view, () => restRunning(rest), (node, locked) => {
+        node.classList.toggle('is-resting', locked);
+        for (const input of node.querySelectorAll('.setrow__reps')) {
+          input.disabled = locked;
+        }
+      });
+    },
+
+    /* Der grüne Bildschirm. Er liegt immer im Baum, solange es eine Pause
+       gibt, und schaltet sich beim Ablauf selbst sichtbar. */
+    overlay: () => {
+      if (justEnded || confirming) return null;
+      const rest = restFor(dayKey, session.id);
+      if (!rest) return null;
+      return restDone(rest, () => { writeRest(null); redraw(); });
     },
   });
 

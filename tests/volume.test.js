@@ -39,7 +39,7 @@ suite('Katalog — innere Stimmigkeit', () => {
   test('Beinübungen sind als solche markiert, Oberkörperübungen nicht', () => {
     // Diese Markierung steuert, was an gesperrten Tagen ausgeblendet wird.
     for (const id of ['rdl_db', 'split_squat_bulgarian', 'leg_extension',
-                      'adductor_machine']) {
+                      'adductor_machine', 'leg_curl_machine', 'squat_bb']) {
       isTrue(EXERCISES[id].loadsLegs, `${id} muss als Beinübung gelten`);
     }
     for (const id of ['ohp_db', 'lat_pulldown', 'curl_cable', 'lateral_raise_machine',
@@ -69,7 +69,9 @@ suite('Katalog — innere Stimmigkeit', () => {
     for (const id of ['rdl', 'row_db', 'curl_db', 'curl_hammer', 'lateral_raise',
                       'chest_fly_cable', 'incline_press_db', 'pullup_negative',
                       'triceps_overhead', 'leg_curl_eccentric', 'leg_curl_slider',
-                      'copenhagen_plank', 'calf_raise', 'pallof_press']) {
+                      'copenhagen_plank', 'calf_raise', 'pallof_press',
+                      /* seit 30. Juli 2026 aus dem Beintag geflogen */
+                      'split_squat_bulgarian', 'adductor_machine']) {
       exercise(id); // wirft, wenn gelöscht
     }
   });
@@ -134,18 +136,33 @@ suite('Plan — Flockes Vorgabe, wörtlich', () => {
   });
 
   test('DER BEINTAG steht genau so, wie Flocke ihn vorgegeben hat', () => {
+    // Reihenfolge und Sätze nach Flockes Ansage vom 30. Juli 2026.
     const legs = sessionExercises(sessionById('c-legs'));
     deepEq(legs.map((e) => e.id), [
-      'triceps_pushdown',        // Trizepsdrücken        3× 8–12
       'curl_cable',              // Bizepscurls Kabel     3× 8–12
-      'rdl_db',                  // RDLs KH               3× 4–8
-      'split_squat_bulgarian',   // Bulgarian Split Squat 3× 6–10
+      'triceps_pushdown',        // Trizepsdrücken        3× 8–12
+      'leg_curl_machine',        // Beinbeuger Maschine   3× 8–12
+      'squat_bb',                // Kniebeuge LH          3× 4–8
+      'rdl_db',                  // RDLs KH               2× 6–10
       'leg_extension',           // Beinstrecker          2× 6–10
-      'adductor_machine',        // Adduktoren            2× 6–10
     ]);
     deepEq(legs.map((e) => [e.sets, e.repsMin, e.repsMax]), [
-      [3, 8, 12], [3, 8, 12], [3, 4, 8], [3, 6, 10], [2, 6, 10], [2, 6, 10],
+      [3, 8, 12], [3, 8, 12], [3, 8, 12], [3, 4, 8], [2, 6, 10], [2, 6, 10],
     ]);
+  });
+
+  test('der Bizeps steht am Beintag VOR dem Trizeps', () => {
+    // Flockes ausdrückliche Vorgabe — die Reihenfolge der beiden Armübungen
+    // ist keine Nebensache, sonst wäre sie nicht angesagt worden.
+    const ids = sessionExercises(sessionById('c-legs')).map((e) => e.id);
+    isTrue(ids.indexOf('curl_cable') < ids.indexOf('triceps_pushdown'),
+      `Reihenfolge war ${ids.slice(0, 2).join(' vor ')}`);
+  });
+
+  test('der Beinbeuger steht vor der Kniebeuge', () => {
+    // Umgekehrt wäre der Beuger beim schweren Beugen schon platt.
+    const ids = sessionExercises(sessionById('c-legs')).map((e) => e.id);
+    isTrue(ids.indexOf('leg_curl_machine') < ids.indexOf('squat_bb'));
   });
 
   test('BEINÜBUNGEN STEHEN AUSSCHLIESSLICH IM BEINTAG', () => {
@@ -267,10 +284,10 @@ suite('volume — der Plan in Zahlen', () => {
   const planned = plannedSetsPerMuscle(SESSIONS);
 
   test('das geplante Wochenvolumen ist berechenbar', () => {
-    close(planned.hamstrings, 3, 0.001, 'nur RDL');
-    close(planned.quads, 5, 0.001, 'Bulgarische Kniebeuge 3 + Beinstrecker 2');
-    close(planned.glutes, 3, 0.001, 'je zur Hälfte aus RDL und Bulgarischer');
-    close(planned.adductors, 2, 0.001, 'Adduktorenmaschine');
+    close(planned.hamstrings, 5, 0.001, 'Beinbeuger 3 + RDL 2');
+    close(planned.quads, 5, 0.001, 'Kniebeuge 3 + Beinstrecker 2');
+    close(planned.glutes, 2.5, 0.001, 'je zur Hälfte aus Kniebeuge und RDL');
+    close(planned.adductors, 0, 0.001, 'Adduktoren stehen nicht mehr im Plan');
     close(planned.calves, 0, 0.001, 'Waden stehen nicht mehr im Plan');
     eq(SESSIONS.reduce((n, s) => n + plannedSets(s), 0), 44, 'Sätze pro Woche');
   });
