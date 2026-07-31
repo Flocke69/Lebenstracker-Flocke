@@ -2,6 +2,7 @@ import { suite, test, eq, close, deepEq, isTrue, isFalse, throws } from './harne
 import {
   WEEK_FIELDS, KCAL_TOLERANCE, PROTEIN_FLOOR, FAT_FLOOR,
   weekTargetAverage, judgeField, weightDrift, suggestFromWeek, weekCheck, weekHistory,
+  hasWeekEntry, weekEntryDue,
 } from '../js/lib/weekly.js';
 import { withWeekMacros, getWeekMacros, emptyDay, emptyState } from '../js/lib/state.js';
 import { KCAL_ADJUST_STEP, DRIFT_THRESHOLD_KG } from '../js/lib/energy.js';
@@ -313,5 +314,65 @@ suite('state — Wochenschnitt schreiben', () => {
     const state = baseState();
     withWeekMacros(state, MO, { kcal: 2800 });
     deepEq(Object.keys(state.weeks), []);
+  });
+});
+
+suite('weekly — die Sonntagabend-Erinnerung', () => {
+  /* Der Yazio-Wochenschnitt ist die einzige wiederkehrende Eingabe, an die die
+     App von sich aus erinnert. Ohne ihn sagt sie über das Essen nichts. */
+
+  const MIT_DATEN = () => ({
+    ...baseState(),
+    days: { [MO]: { ...emptyDay(), weightKg: 80 } },
+  });
+
+  test('hasWeekEntry erkennt eine einzelne eingetragene Zahl', () => {
+    isFalse(hasWeekEntry(baseState(), MO));
+    isTrue(hasWeekEntry(withWeekMacros(baseState(), MO, { kcal: 2700 }), MO));
+    isTrue(hasWeekEntry(withWeekMacros(baseState(), MO, { fatG: 70 }), MO),
+      'auch ein einzelnes Makro zählt als angefangen');
+  });
+
+  test('SONNTAG ist der Moment — die Woche ist zu Ende', () => {
+    const due = weekEntryDue(MIT_DATEN(), SO);
+    isTrue(due.due);
+    eq(due.kind, 'today');
+    eq(due.weekStart, MO, 'gefragt ist die Woche, die heute endet');
+  });
+
+  test('ist der Schnitt schon da, kommt keine Erinnerung', () => {
+    const s = withWeekMacros(MIT_DATEN(), MO, { kcal: 2700, proteinG: 150 });
+    isFalse(weekEntryDue(s, SO).due);
+  });
+
+  test('Montag bis Mittwoch wird die Vorwoche nachgefragt', () => {
+    for (const tag of ['2026-07-13', '2026-07-14', '2026-07-15']) {
+      const due = weekEntryDue(MIT_DATEN(), tag);
+      isTrue(due.due, tag);
+      eq(due.kind, 'overdue', tag);
+      eq(due.weekStart, MO, `${tag}: es geht um die Woche davor`);
+    }
+  });
+
+  test('AB DONNERSTAG IST SCHLUSS — sonst wird die Erinnerung zu Tapete', () => {
+    for (const tag of ['2026-07-16', '2026-07-17', '2026-07-18']) {
+      isFalse(weekEntryDue(MIT_DATEN(), tag).due, tag);
+    }
+  });
+
+  test('mitten in der Woche wird nichts verlangt', () => {
+    // Mittwoch der laufenden Woche: die Woche ist noch nicht vorbei.
+    isFalse(weekEntryDue(withWeekMacros(MIT_DATEN(), MO, { kcal: 2700 }), '2026-07-08').due);
+  });
+
+  test('vor dem ersten erfassten Tag wird nichts verlangt', () => {
+    // Ohne jede Daten gibt es keine Woche, für die etwas fehlen könnte.
+    isFalse(weekEntryDue(baseState(), '2026-07-13').due,
+      'eine leere App fragt nicht nach der Vorwoche');
+  });
+
+  test('die Erinnerung sagt, worum es geht', () => {
+    const due = weekEntryDue(MIT_DATEN(), SO);
+    isTrue(due.text.includes('Yazio'), 'ohne die Quelle weiß niemand, wo die Zahlen herkommen');
   });
 });

@@ -9,21 +9,25 @@
  * insbesondere bei Kalorien. Ein Werkzeug, das die eigenen Ziele ohne
  * Rückfrage umschreibt, verliert das Vertrauen genau einmal.
  *
- * `toMarkdown` erzeugt den Block für das Gespräch mit Claude. Er enthält
- * bewusst auch die Rohzahlen: die tiefe Auswertung passiert dort, nicht hier.
+ * DIE APP URTEILT SELBST. Hier standen einmal zehn Fragen fürs Monatsgespräch
+ * und ein Markdown-Block zum Kopieren. Beides ist raus: ein Review, das erst
+ * durch Tippen und einen Chat entsteht, findet am Monatsende nicht statt.
+ * `overallVerdict` sagt stattdessen in einem Wort, ob es passt — aus denselben
+ * Regeln, die auch die Befunde erzeugen, und mit denselben nachlesbaren
+ * Schwellen.
  */
 
 import {
   weekSummary, previousWeekSummary, monthSummary, compare,
-  SHORT_SLEEP_H, LOW_READINESS, mean,
+  SHORT_SLEEP_H, LOW_READINESS,
 } from './aggregate.js';
 import {
   weekStartKey, addDays, formatDayShort, formatMonth, monthKey, addMonths,
-  monthDays, weekdayOf, todayKey, WEEKDAYS_LONG,
+  monthDays, todayKey,
 } from './dates.js';
 import { getDay, getWeekMacros, firstTrackedMonth } from './state.js';
-import { MUSCLE_GROUPS, EXERCISES } from '../../data/exercises.js';
-import { SESSIONS, sessionById, sessionExercises } from '../../data/plan-default.js';
+import { EXERCISES } from '../../data/exercises.js';
+import { SESSIONS, sessionExercises } from '../../data/plan-default.js';
 import { DRIFT_THRESHOLD_KG, suggestKcalAdjustment } from './energy.js';
 
 /* ─── Schwellen, alle an einer Stelle ────────────────────────────────────── */
@@ -54,6 +58,40 @@ export const SEVERITY_TONE = Object.freeze({
   alarm: 'bad', warn: 'ok', info: 'idle', good: 'good',
 });
 
+/**
+ * Zu welchem der vier Fenster gehört ein Befund?
+ *
+ * Das Review ist nach Themen sortiert — Gewicht, Essen, Training, Erholung —
+ * und jeder Befund muss wissen, unter welcher Überschrift er steht. Sonst
+ * bliebe nur die alte lange Liste, in der alles durcheinanderfällt.
+ *
+ * `data` ist der Auffangbehälter für Befunde ÜBER die Erfassung selbst. Die
+ * gehören in keins der vier Fenster, sondern nach ganz oben: wenn zu wenig
+ * erfasst ist, stehen alle anderen Urteile auf dünnem Eis.
+ */
+export const FLAG_TOPIC = Object.freeze({
+  logging: 'data',
+  'all-clear': 'data',
+  'weight-drift': 'weight',
+  protein: 'food',
+  'deficit-cost': 'food',
+  deload: 'training',
+  stagnation: 'training',
+  'sessions-missed': 'training',
+  'sleep-low': 'recovery',
+  'readiness-low-days': 'recovery',
+  'readiness-avg-low': 'recovery',
+  soreness: 'recovery',
+});
+
+/** Die vier Themen in Anzeigereihenfolge, mit Überschrift. */
+export const TOPICS = Object.freeze([
+  { key: 'weight', label: 'Gewicht' },
+  { key: 'food', label: 'Essen' },
+  { key: 'training', label: 'Training' },
+  { key: 'recovery', label: 'Erholung' },
+]);
+
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const de = (v, d = 1) => (isNum(v) ? v.toLocaleString('de-DE',
   { minimumFractionDigits: d, maximumFractionDigits: d }) : '—');
@@ -62,14 +100,21 @@ const pct = (v) => (isNum(v) ? `${Math.round(v * 100)} %` : '—');
 /**
  * Ein Befund.
  *
- * `short` ist neu und der Grund dafür ist die Anzeige: das Review zeigt die
- * Befunde als kurze Stichpunktliste, nicht als sechs Karten mit je vier Sätzen.
- * Der lange `detail` und die `action` bleiben — sie gehen in den Kopierblock
- * fürs Gespräch und in den aufklappbaren Teil. Zwei Längen für zwei Zwecke,
- * statt einer Länge, die für beides falsch ist.
+ * Drei Längen für drei Orte: `short` steht als Stichpunkt im Themenfenster,
+ * `detail` erklärt aufgeklappt die Zahlen dahinter, `action` sagt, was zu tun
+ * ist. Eine Länge, die für alles herhalten muss, ist überall die falsche.
+ *
+ * `topic` kommt aus der Tabelle oben und nicht als Parameter: die Zuordnung
+ * gehört an EINE Stelle, sonst muss man sie an zwölf Aufrufen nachpflegen.
  */
 function flag(id, severity, title, short, detail, action = null) {
-  return { id, severity, tone: SEVERITY_TONE[severity], title, short, detail, action };
+  return {
+    id,
+    severity,
+    tone: SEVERITY_TONE[severity],
+    topic: FLAG_TOPIC[id] ?? 'data',
+    title, short, detail, action,
+  };
 }
 
 /* ─── Progression je Übung ───────────────────────────────────────────────── */
@@ -506,78 +551,126 @@ export function progressVerdict(review) {
   };
 }
 
-/* ─── Rückmeldung in der App ─────────────────────────────────────────────── */
+/* ─── Das Urteil über den ganzen Zeitraum ────────────────────────────────── */
+
+/** Ab so vielen erfassten Tagen im Verhältnis zum Zeitraum trägt ein Urteil. */
+export const VERDICT_MIN_COVERAGE = 0.5;
 
 /**
- * Was die App aus Zahlen UND Antworten macht.
+ * Passt es? Ein Wort, ein Satz, höchstens drei Gründe.
  *
- * Zwei Dinge, die diese Funktion NICHT tut, und beides mit Absicht:
+ * Das ist die Antwort, für die es früher zehn Fragen und ein Gespräch brauchte.
+ * Sie wird nicht zusätzlich geraten, sondern aus dem zusammengesetzt, was
+ * ohnehin schon geurteilt wird:
  *
- *   Sie liest die Freitext-Antworten nicht aus. Sie kann es nicht, und so zu
- *   tun als ob wäre die schlimmere Variante — eine App, die auf "Handy lag im
- *   Bett" mit einer allgemeinen Schlafhygiene-Predigt antwortet, wird nach dem
- *   zweiten Monat nicht mehr gelesen. Was sie tut: die Antwort auf die letzte
- *   Frage WÖRTLICH zurückgeben, weil das die Entscheidung des Monats ist.
+ *   die BEFUNDE (buildFlags) — Schlaf, Protein, Bereitschaft, Deload …
+ *   das VOLUMENURTEIL (volumeVerdict) — kam genug zusammen?
+ *   das FORTSCHRITTSURTEIL (progressVerdict) — geht es voran?
  *
- *   Sie ändert nichts. Kalorienziel und Plan bleiben, wo sie sind.
+ * Die beiden letzten MÜSSEN mit hinein. Ohne sie stand hier ein grünes „Passt"
+ * über einem Monat, in dem zwei Drittel der geplanten Sätze fehlten — die
+ * Befunde allein kennen kein Volumen. Ein Urteil, das den größten Ausfall
+ * nicht sieht, ist schlimmer als keins.
  *
- * Die Fragen kommen als Parameter herein, nicht aus `review`: sie hängen am
- * Zustand (reviewQuestions braucht ihn), und diese Funktion soll ohne Zustand
- * prüfbar bleiben.
+ *   Eine schwere Sache → „Läuft schief".
+ *   Eine leichte       → „Nachjustieren".
+ *   Nichts davon       → „Passt".
  *
- * @returns {{ready, tone, headline, points, decision, missing}}
+ * UND EIN VIERTER FALL, der über allem steht: zu wenig erfasst. Dann urteilt
+ * die App NICHT. Ein grünes „passt" über acht erfassten Tagen wäre eine Lüge,
+ * die sich gut anfühlt — und genau die Sorte Zahl, wegen der man einer App
+ * irgendwann nicht mehr glaubt.
+ *
+ * @returns {{tone, word, headline, reasons, coverage, judged}}
  */
-export function reviewFeedback(review, questions = [], answers = {}) {
-  const answered = questions.filter((q) => String(answers[q.id] ?? '').trim() !== '');
-  const missing = questions.length - answered.length;
+export function overallVerdict(review) {
+  const s = review.summary;
+  const days = Math.max(s.period.dayCount, 1);
+  const logged = Math.max(s.logging.daysWithCheckin, s.logging.daysWithWeight);
+  const coverage = logged / days;
 
-  const volume = volumeVerdict(review.summary);
-  const progress = progressVerdict(review);
-
-  /* Die Prioritäten kommen aus den Befunden, schärfste zuerst — aber höchstens
-     drei. Eine Liste mit sieben Prioritäten hat keine. */
-  const points = review.flags
+  /* `level` 0 ist schwer, 1 ist leicht — dieselbe Rangfolge für Befunde und
+     für die beiden Trainingsurteile, damit sie sich vergleichen lassen. */
+  const concerns = review.flags
     .filter((f) => f.severity === 'alarm' || f.severity === 'warn')
-    .slice(0, 3)
-    .map((f) => ({ tone: f.tone, title: f.title, text: f.action ?? f.detail }));
+    .map((f) => ({
+      level: SEVERITY_ORDER[f.severity],
+      title: f.title, short: f.short, tone: f.tone, topic: f.topic,
+    }));
 
-  if (points.length < 3 && volume.tone !== 'good' && volume.tone !== 'idle') {
-    points.push({ tone: volume.tone, title: volume.headline, text: volume.detail });
-  }
-  if (points.length < 3 && progress.tone === 'bad') {
-    points.push({ tone: progress.tone, title: progress.headline, text: progress.detail });
-  }
-  if (points.length === 0) {
-    points.push({
-      tone: 'good',
-      title: 'Nichts dringend',
-      text: 'Weiter wie bisher und bei der nächsten Einheit einen '
-        + 'Progressionsversuch wagen.',
+  for (const v of [volumeVerdict(s), progressVerdict(review)]) {
+    if (v.tone !== 'bad' && v.tone !== 'ok') continue;
+    concerns.push({
+      level: v.tone === 'bad' ? 0 : 1,
+      title: v.headline,
+      short: v.detail,
+      tone: v.tone,
+      topic: 'training',
     });
   }
 
-  const decision = String(answers.next ?? '').trim();
+  /* Gar nicht trainiert ist kein „nichts zu bewerten", sondern der Befund
+     selbst. volumeVerdict hält sich da bewusst zurück — es kann ein
+     nachgetragener Zeitraum sein, und ein Urteil über null Sätze wäre dort
+     eine Anmaßung. Das GESAMTURTEIL darf sich nicht so herausreden: eine
+     Woche ohne einen einzigen Satz ist keine Woche, die passt. */
+  if (s.training.sets === 0 && s.period.dayCount >= 7) {
+    concerns.push({
+      level: 0,
+      title: 'Nicht trainiert',
+      short: `Kein einziger Satz in ${s.period.dayCount} Tagen.`,
+      tone: 'bad',
+      topic: 'training',
+    });
+  }
 
-  if (answered.length === 0) {
+  concerns.sort((a, b) => a.level - b.level);
+  const reasons = concerns.slice(0, 3).map(({ level, ...rest }) => rest);
+
+  if (coverage < VERDICT_MIN_COVERAGE) {
     return {
-      ready: false,
       tone: 'idle',
-      headline: 'Erst die Fragen',
-      points: [],
-      decision: '',
-      missing,
+      word: 'Zu dünn',
+      headline: `Nur ${logged} von ${days} Tagen haben Daten — dazu sage ich nichts.`,
+      reasons,
+      coverage,
+      judged: false,
+    };
+  }
+
+  if (concerns.some((c) => c.level === 0)) {
+    return {
+      tone: 'bad',
+      word: 'Läuft schief',
+      headline: concerns.length === 1
+        ? 'Eine Sache läuft aus dem Ruder — die steht unten.'
+        : `${concerns.length} Sachen laufen schief. Die wichtigste zuerst.`,
+      reasons,
+      coverage,
+      judged: true,
+    };
+  }
+
+  if (concerns.length > 0) {
+    return {
+      tone: 'ok',
+      word: 'Nachjustieren',
+      headline: concerns.length === 1
+        ? 'Im Großen passt es, an einer Stelle nicht.'
+        : `Im Großen passt es, an ${concerns.length} Stellen nicht.`,
+      reasons,
+      coverage,
+      judged: true,
     };
   }
 
   return {
-    ready: true,
-    tone: points[0].tone,
-    headline: missing === 0
-      ? 'Alle zehn beantwortet — das sagen die Zahlen dazu'
-      : `${answered.length} von ${questions.length} beantwortet — das sagen die Zahlen`,
-    points,
-    decision,
-    missing,
+    tone: 'good',
+    word: 'Passt',
+    headline: 'Nichts läuft aus dem Ruder. Weitermachen.',
+    reasons,
+    coverage,
+    judged: true,
   };
 }
 
@@ -637,152 +730,8 @@ export function monthReviewDue(state, today = todayKey()) {
   return { due: false, month: null, kind: 'none', text: '' };
 }
 
-/* ─── Die zehn Fragen fürs Monatsgespräch ────────────────────────────────── */
-
-/**
- * Genau zehn Fragen, aus den Zahlen des Monats gebaut.
- *
- * Warum zehn und nicht "so viele wie auffällig ist": eine feste Zahl macht das
- * Gespräch planbar. Zehn Fragen sind in einer Viertelstunde beantwortet, und
- * ein Monatsreview, das eine Viertelstunde dauert, findet auch im zweiten Jahr
- * noch statt.
- *
- * Die Fragen sind DATENGETRIEBEN, nicht generisch. "Wie war dein Schlaf?" ist
- * keine Frage, sondern eine Floskel. "Du lagst im Schnitt bei 6,1 Stunden und
- * hattest 14 Nächte unter 6,5 — was hält dich abends auf?" ist eine.
- *
- * `id` ist stabil, damit Antworten aus einem früheren Monat zuordenbar bleiben,
- * auch wenn sich der Fragetext ändert.
- *
- * @returns {Array<{id, topic, question, context}>} immer genau zehn
- */
-export function reviewQuestions(review, state = {}) {
-  const s = review.summary;
-  const c = review.comparison;
-  const p = state.profile ?? {};
-  const out = [];
-
-  const ask = (id, topic, question, context) => out.push({ id, topic, question, context });
-
-  /* 1. Schlaf. Steht immer an erster Stelle — er ist der Hebel, der auf alles
-        andere durchschlägt. */
-  if (isNum(s.sleep.avg) && s.sleep.avg < 7) {
-    ask('sleep', 'Schlaf',
-      'Was hält dich abends auf?',
-      `Ø ${de(s.sleep.avg)} h, ${s.sleep.nightsShort} von ${s.sleep.nights} Nächten `
-      + `unter ${de(SHORT_SLEEP_H)} h. Kürzeste Nacht ${de(s.sleep.min)} h.`);
-  } else {
-    ask('sleep', 'Schlaf',
-      'Was hat beim Schlaf funktioniert, das du halten willst?',
-      `Ø ${de(s.sleep.avg)} h — das ist die Grundlage, auf der alles andere steht.`);
-  }
-
-  /* 2. Bereitschaft: das Gesamturteil des Monats über die Belastung. */
-  ask('load', 'Belastung',
-    s.readiness.lowDays >= 5
-      ? 'An den schlechten Tagen — war das Fußball, Gym, Arbeit oder Schlaf?'
-      : 'Wie hat sich der Monat körperlich angefühlt, unabhängig von den Zahlen?',
-    `${s.readiness.lowDays} von ${s.readiness.days} erfassten Tagen unter der `
-    + `Schwelle${isNum(c.readiness) ? `, gegenüber dem Vormonat ${c.readiness > 0 ? '+' : ''}${Math.round(c.readiness)}` : ''}.`);
-
-  /* 3. Gewicht gegen ABSICHT — nicht gegen null.
-        Ein Kilo weniger ist bei −500 kcal ein Erfolg und bei Erhaltung eine
-        Drift. Ohne den eingestellten Offset ist die Zahl nicht zu bewerten,
-        und die Frage danach wäre eine Floskel. */
-  const drift = isNum(s.weight.delta) ? s.weight.delta : null;
-  const moving = drift !== null && Math.abs(drift) > DRIFT_THRESHOLD_KG;
-  const offset = isNum(p.kcalOffset) ? p.kcalOffset : 0;
-  const wantsDown = offset < 0;
-  const wantsUp = offset > 0;
-
-  let weightQuestion;
-  if (moving && ((wantsDown && drift < 0) || (wantsUp && drift > 0))) {
-    weightQuestion = 'Das Gewicht läuft wie geplant. Wie fühlt es sich an — '
-      + 'Leistung, Hunger, Laune?';
-  } else if (moving) {
-    weightQuestion = 'Der Gewichtstrend läuft anders als eingestellt — '
-      + 'war das so gewollt?';
-  } else if (wantsDown || wantsUp) {
-    weightQuestion = 'Trotz Korrektur bewegt sich nichts. Wo steckt die Lücke — '
-      + 'Wochenende, Getränke, Portionen?';
-  } else {
-    weightQuestion = 'Das Gewicht steht. Willst du das weiter so, oder soll '
-      + 'sich etwas bewegen?';
-  }
-
-  ask('weight', 'Gewicht', weightQuestion,
-    `7-Tage-Schnitt ${de(s.weight.first)} → ${de(s.weight.last)} kg `
-    + `(${drift !== null ? `${drift > 0 ? '+' : ''}${de(drift)}` : '—'} kg) `
-    + `bei Ziel ${offset !== 0 ? `${offset > 0 ? '+' : ''}${offset} kcal` : 'Erhaltung'}.`);
-
-  /* 4. Ernährung: der Wochenschnitt aus Yazio ist die maßgebliche Zahl. */
-  const weekAverages = monthWeekAverages(state, review.month ?? monthKey(s.period.start));
-  const kcalWeeks = weekAverages.filter((w) => isNum(w.kcal));
-  ask('nutrition', 'Ernährung',
-    kcalWeeks.length === 0
-      ? 'Es liegt kein Wochenschnitt vor — woran hat es gehakt?'
-      : 'Wie schwer war es, den Wochenschnitt zu treffen?',
-    kcalWeeks.length === 0
-      ? 'In keiner Woche des Monats wurden die Yazio-Zahlen eingetragen.'
-      : `${kcalWeeks.length} ${kcalWeeks.length === 1 ? 'Woche' : 'Wochen'} erfasst: `
-        + `${kcalWeeks.map((w) => Math.round(w.kcal)).join(', ')} kcal.`);
-
-  /* 5. Protein: im Defizit die Zahl, an der alles hängt. */
-  ask('protein', 'Protein',
-    'Wo verlierst du Protein — Frühstück, unterwegs, abends?',
-    isNum(s.nutrition.proteinAvg)
-      ? `Ø ${Math.round(s.nutrition.proteinAvg)} g pro Tag, erreicht an `
-        + `${s.nutrition.proteinHits} von ${s.nutrition.proteinCompared} erfassten Tagen.`
-      : 'Keine Tageswerte erfasst — der Wochenschnitt aus Yazio trägt das.');
-
-  /* 6. Disziplin: wie viele Einheiten sind tatsächlich passiert. */
-  const geplant = Math.round(SESSIONS.length * (s.period.dayCount / 7));
-  ask('sessions', 'Einheiten',
-    s.logging.daysWithTraining < geplant
-      ? 'Welche Einheit fällt am häufigsten aus, und warum genau die?'
-      : 'Was hat es leicht gemacht, jede Einheit zu machen?',
-    `${s.logging.daysWithTraining} von ${geplant} geplanten Einheiten geloggt, `
-    + `${s.training.sets} Sätze insgesamt.`);
-
-  /* 7. Verschiebungen: die App weiß, DASS verschoben wurde, nie warum. */
-  const moves = monthMoves(state, review.month ?? monthKey(s.period.start));
-  ask('moves', 'Verschiebungen',
-    moves.length === 0
-      ? 'Der Plan hat gehalten — passt die Wochenstruktur weiter zu deinem Alltag?'
-      : 'Was war der Grund für die Verschiebungen?',
-    moves.length === 0
-      ? 'Keine Einheit verschoben.'
-      : moves.map((m) => `${m.sessionName} → ${WEEKDAYS_LONG[weekdayOf(m.dayKey)]} `
-        + `(${formatDayShort(m.dayKey)})`).join(', ') + '.');
-
-  /* 8. Progression: wo geht es nicht voran. */
-  ask('progress', 'Progression',
-    review.stagnating.length > 0
-      ? 'Bei diesen Übungen geht nichts voran — Technik, Kopf oder Erschöpfung?'
-      : 'Bei welcher Übung hast du den größten Sprung gemerkt?',
-    review.stagnating.length > 0
-      ? review.stagnating.map((st) => `${st.name} ${de(st.from)} → ${de(st.to)} kg`).join(', ') + '.'
-      : `Tonnage ${Math.round(s.training.tonnage).toLocaleString('de-DE')} kg`
-        + `${isNum(c.tonnage) ? `, ${c.tonnage > 0 ? '+' : ''}${Math.round(c.tonnage)} kg zum Vormonat` : ''}.`);
-
-  /* 9. Fußball: das eigentliche Ziel des ganzen Aufwands. */
-  ask('football', 'Fußball',
-    'Wie hast du dich auf dem Platz gefühlt — Sprints, Zweikämpfe, letzte 20 Minuten?',
-    `${s.football.matches} ${s.football.matches === 1 ? 'Spiel' : 'Spiele'}, `
-    + `${s.football.teamSessions} Mannschaftstrainings. `
-    + `Muskelkater Ø ${de(s.soreness.avg)} von 5.`);
-
-  /* 10. Immer dieselbe letzte Frage. Ein Review ohne Entscheidung ist ein
-         Bericht. */
-  ask('next', 'Nächster Monat',
-    'Was ändert sich im nächsten Monat — genau eine Sache?',
-    'Eine Änderung pro Monat lässt sich zuordnen. Drei gleichzeitig nicht.');
-
-  return out;
-}
-
 /** Wochenschnitte, deren Montag in diesem Monat liegt. */
-function monthWeekAverages(state, mk) {
+export function monthWeekAverages(state, mk) {
   if (typeof mk !== 'string') return [];
   const starts = new Set(
     monthDays(mk).map((key) => weekStartKey(key)).filter((start) => monthKey(start) === mk)
@@ -793,33 +742,17 @@ function monthWeekAverages(state, mk) {
   }));
 }
 
-/** Verschiebungen dieses Monats, ohne die „hier nichts"-Einträge. */
-function monthMoves(state, mk) {
-  if (typeof mk !== 'string') return [];
-  return Object.entries(state.schedule ?? {})
-    .filter(([key, planId]) => monthKey(key) === mk && planId && planId !== 'none')
-    .map(([dayKey, planId]) => ({
-      dayKey,
-      planId,
-      sessionName: sessionById(planId)?.name ?? planId,
-    }))
-    .sort((a, b) => a.dayKey.localeCompare(b.dayKey));
-}
-
-/* ─── Monats-Datensatz: kopieren und zurückimportieren ───────────────────── */
+/* ─── Monats-Datensatz: der abgehakte Monat ──────────────────────────────── */
 
 /** Format des Monats-Datensatzes. Unabhängig von der Schemaversion. */
 export const MONTH_RECORD_VERSION = 1;
 
-/** Kennung des Codeblocks, in dem der Datensatz steckt. */
-export const MONTH_RECORD_FENCE = 'lebenstracker-monat';
-
 /**
- * Die Kennzahlen eines Monats, klein genug zum Kopieren.
+ * Die Kennzahlen eines Monats, klein genug zum Behalten.
  *
  * Die volle Summary trägt Tagesreihen mit sich (Gewicht je Tag, Bereitschaft je
- * Tag). Die gehören in die Exportdatei, nicht in einen Block, den man in einen
- * Chat einfügt — sonst sind es dreißig Zeilen Zahlen, die niemand liest.
+ * Tag). Die gehören in die Exportdatei — hier steht nur, was den Monat auf
+ * einen Blick beschreibt.
  */
 export function compactSummary(summary) {
   const s = summary;
@@ -850,17 +783,21 @@ export function compactSummary(summary) {
 }
 
 /**
- * Der Datensatz, der kopiert und wieder eingelesen wird.
+ * Der Datensatz eines abgehakten Monats.
  *
- * Er enthält BEIDES: die Zahlen und die Antworten. Nur so ist ein Monat später
- * noch verwertbar — die Zahlen sagen, was passiert ist, die Antworten sagen,
- * warum.
+ * Er hält fest, WAS war und WIE die App es beurteilt hat — Zahlen, Befunde,
+ * stehende Übungen, Urteil. Früher standen hier auch zehn Fragen mit Flockes
+ * Antworten; die sind raus, weil sie am Monatsende nicht beantwortet wurden.
+ * Ein Ritual, das man auslässt, ist kein Ritual.
+ *
+ * `questions` bleibt als leeres Feld stehen: Datensätze aus der Zeit davor
+ * tragen Antworten, und die dürfen beim Einlesen nicht durchs Raster fallen.
  */
-export function buildMonthRecord(review, state, answers = {}, createdAt) {
+export function buildMonthRecord(review, state, createdAt) {
   if (review.kind !== 'month') {
     throw new Error('Ein Monats-Datensatz braucht ein Monats-Review.');
   }
-  const questions = reviewQuestions(review, state);
+  const verdict = overallVerdict(review);
   return {
     app: 'Lebenstracker',
     kind: 'monthReview',
@@ -875,290 +812,8 @@ export function buildMonthRecord(review, state, answers = {}, createdAt) {
     summary: compactSummary(review.summary),
     flags: review.flags.map((f) => ({ id: f.id, severity: f.severity, title: f.title })),
     stagnating: review.stagnating.map((st) => ({ exId: st.exId, from: st.from, to: st.to })),
-    questions: questions.map((q) => ({
-      id: q.id,
-      topic: q.topic,
-      question: q.question,
-      context: q.context,
-      answer: answers[q.id] ?? null,
-    })),
+    verdict: { tone: verdict.tone, word: verdict.word, headline: verdict.headline },
+    questions: [],
   };
 }
 
-/**
- * Aus einem eingefügten Text den Datensatz herausholen.
- *
- * Nimmt den Codeblock, rohes JSON oder einen Text, in dem irgendwo ein
- * JSON-Objekt steckt. Bewusst großzügig: was aus einem Chat kopiert wird, hat
- * gerne noch Text davor und danach, und daran soll ein Import nicht scheitern.
- *
- * Wirft mit lesbarer Begründung, statt undefined zurückzugeben — ein
- * fehlgeschlagener Import muss sagen, was fehlt.
- */
-export function parseMonthRecord(text) {
-  if (typeof text !== 'string' || text.trim() === '') {
-    throw new Error('Da ist kein Text zum Einlesen.');
-  }
-
-  const fenced = new RegExp(`\`\`\`(?:${MONTH_RECORD_FENCE}|json)?\\s*([\\s\\S]*?)\`\`\``);
-  const match = fenced.exec(text);
-  let candidate = match ? match[1] : null;
-
-  if (candidate === null) {
-    const first = text.indexOf('{');
-    const last = text.lastIndexOf('}');
-    if (first === -1 || last <= first) {
-      throw new Error('In dem Text steckt kein Datensatz. Kopiere den Block, der '
-        + `mit \`\`\`${MONTH_RECORD_FENCE} beginnt.`);
-    }
-    candidate = text.slice(first, last + 1);
-  }
-
-  let raw;
-  try {
-    raw = JSON.parse(candidate);
-  } catch (err) {
-    throw new Error(`Der Datensatz ist kein gültiges JSON: ${err.message}`);
-  }
-
-  if (raw?.app !== 'Lebenstracker' || raw?.kind !== 'monthReview') {
-    throw new Error('Das ist kein Monats-Review aus dem Lebenstracker.');
-  }
-  if (!Number.isInteger(raw.recordVersion) || raw.recordVersion > MONTH_RECORD_VERSION) {
-    throw new Error(
-      `Der Datensatz hat Format ${raw.recordVersion}, diese App-Version kennt `
-      + `höchstens ${MONTH_RECORD_VERSION}.`
-    );
-  }
-  if (typeof raw.month !== 'string') {
-    throw new Error('Im Datensatz fehlt die Monatsangabe.');
-  }
-  monthDays(raw.month);   // wirft bei Unsinn
-
-  const answered = (raw.questions ?? []).filter((q) => q?.answer).length;
-  return { record: raw, answered, questionCount: (raw.questions ?? []).length };
-}
-
-/**
- * Der Text zum Kopieren: erst lesbar, dann der Block zum Zurückimportieren.
- *
- * Die Reihenfolge ist Absicht. Oben steht, was ein Mensch (und ich im Gespräch)
- * lesen soll; der Datenblock steht unten, weil er nur für die App ist. Ein
- * Datensatz zuoberst würde jedes Gespräch mit dreißig Zeilen JSON eröffnen.
- */
-export function monthRecordToText(record) {
-  const s = record.summary;
-  const L = [];
-
-  L.push(`# Monats-Review — ${formatMonth(record.month)}`);
-  L.push('');
-  L.push(`Zeitraum ${s.period.start} bis ${s.period.end} (${s.period.dayCount} Tage)`);
-  L.push('');
-
-  L.push('## Die Zahlen');
-  L.push(`- Gewicht: ${de(s.weight.first)} → ${de(s.weight.last)} kg `
-       + `(${isNum(s.weight.delta) ? `${s.weight.delta > 0 ? '+' : ''}${de(s.weight.delta)}` : '—'} kg)`);
-  L.push(`- Schlaf: Ø ${de(s.sleep.avg)} h, ${s.sleep.nightsShort} kurze Nächte`);
-  L.push(`- Bereitschaft: Ø ${isNum(s.readiness.avg) ? Math.round(s.readiness.avg) : '—'}, `
-       + `${s.readiness.lowDays} schlechte Tage`);
-  L.push(`- Training: ${s.logging.daysWithTraining} Einheiten, ${s.training.sets} Sätze, `
-       + `${Math.round(s.training.tonnage).toLocaleString('de-DE')} kg Tonnage`);
-  L.push(`- Ernährung: Ø ${isNum(s.nutrition.kcalAvg) ? Math.round(s.nutrition.kcalAvg) : '—'} kcal, `
-       + `Protein Ø ${isNum(s.nutrition.proteinAvg) ? Math.round(s.nutrition.proteinAvg) : '—'} g`);
-  L.push(`- Fußball: ${s.football.matches} Spiele, ${s.football.teamSessions} Mannschaftstrainings`);
-  L.push('');
-
-  L.push('## Volumen je Muskelgruppe');
-  const volume = Object.entries(s.training.volume).sort((a, b) => b[1] - a[1]);
-  if (volume.length === 0) L.push('- nichts geloggt');
-  for (const [key, sets] of volume) {
-    L.push(`- ${MUSCLE_GROUPS[key] ?? key}: ${de(sets)} Sätze`);
-  }
-  L.push('');
-
-  L.push('## Befunde der App');
-  if (record.flags.length === 0) L.push('- keine');
-  for (const f of record.flags) L.push(`- [${f.severity}] ${f.title}`);
-  L.push('');
-
-  L.push('## Die zehn Fragen');
-  record.questions.forEach((q, i) => {
-    L.push(`${i + 1}. **${q.question}** _(${q.topic})_`);
-    L.push(`   Datenlage: ${q.context}`);
-    L.push(`   Antwort: ${q.answer ? q.answer : '—'}`);
-  });
-  L.push('');
-
-  L.push('---');
-  L.push('Bitte schau dir das an: Was fällt dir auf, was die Regeln der App nicht');
-  L.push('sehen können? Und was soll ich im nächsten Monat konkret anders machen?');
-  L.push('');
-  L.push('<!-- Der Block unten ist für die App. Zum Zurückimportieren mitkopieren. -->');
-  L.push('');
-  L.push('```' + MONTH_RECORD_FENCE);
-  L.push(JSON.stringify(record, null, 2));
-  L.push('```');
-
-  return L.join('\n');
-}
-
-/* ─── Übergabe an Claude ─────────────────────────────────────────────────── */
-
-function volumeLines(volume) {
-  return Object.entries(volume)
-    .filter(([, sets]) => sets > 0)
-    .sort((a, b) => b[1] - a[1])
-    .map(([key, sets]) => `- ${MUSCLE_GROUPS[key]}: ${de(sets)} Sätze`);
-}
-
-/**
- * Der Block für das Gespräch hier.
- *
- * Enthält absichtlich Rohzahlen und nicht nur die Befunde: die App kann nur
- * das erkennen, was vorher als Regel hineingeschrieben wurde. Muster wie
- * "die schlechten Nächte liegen immer donnerstags" fallen ihr nicht auf —
- * mir schon, wenn ich die Zahlen sehe.
- */
-export function toMarkdown(review, state) {
-  const s = review.summary;
-  const c = review.comparison;
-  const p = state?.profile ?? {};
-  const L = [];
-
-  L.push(`# ${review.kind === 'week' ? 'Wochen' : 'Monats'}-Review — ${review.title}`);
-  L.push('');
-  L.push(`Zeitraum: ${s.period.start} bis ${s.period.end} (${s.period.dayCount} Tage)`);
-  L.push('');
-
-  L.push('## Einstellungen');
-  L.push(`- Ziel: ${isNum(p.kcalOffset) && p.kcalOffset !== 0
-    ? `${p.kcalOffset > 0 ? '+' : ''}${p.kcalOffset} kcal` : 'Erhaltung'}`);
-  if ((p.offsetExemptDayTypes ?? []).length) {
-    L.push(`- Korrektur ausgesetzt an: ${p.offsetExemptDayTypes.join(', ')}`);
-  }
-  L.push(`- Protein: ${de(p.proteinPerKg, 1)} g/kg, Fett ${de(p.fatPerKg, 1)} g/kg`);
-  L.push('');
-
-  L.push('## Erfassung');
-  L.push(`- Check-in: ${s.logging.daysWithCheckin}/${s.period.dayCount} Tage`);
-  L.push(`- Gewicht: ${s.logging.daysWithWeight}/${s.period.dayCount}`);
-  L.push(`- Ernährung: ${s.logging.daysWithNutrition}/${s.period.dayCount}`);
-  L.push(`- Training: ${s.logging.daysWithTraining} `
-       + `${s.logging.daysWithTraining === 1 ? 'Einheit' : 'Einheiten'}`);
-  L.push('');
-
-  L.push('## Körper und Befinden');
-  L.push(`- Gewicht (7-Tage-Schnitt): ${de(s.weight.first)} → ${de(s.weight.last)} kg `
-       + `(${isNum(s.weight.delta) ? `${s.weight.delta > 0 ? '+' : ''}${de(s.weight.delta)}` : '—'} kg)`);
-  L.push(`- Spanne der Tageswerte: ${de(s.weight.min)} – ${de(s.weight.max)} kg`);
-  L.push(`- Schlaf: Ø ${de(s.sleep.avg)} h, kürzeste ${de(s.sleep.min)} h, `
-       + `${s.sleep.nightsShort} Nächte unter ${de(SHORT_SLEEP_H)} h`);
-  L.push(`- Bereitschaft: Ø ${isNum(s.readiness.avg) ? Math.round(s.readiness.avg) : '—'}, `
-       + `Minimum ${isNum(s.readiness.min) ? Math.round(s.readiness.min) : '—'}, `
-       + `${s.readiness.lowDays} Tage unter ${LOW_READINESS}`);
-  L.push(`- Muskelkater: Ø ${de(s.soreness.avg)} von 5`);
-  if (isNum(c.readiness)) {
-    L.push(`- Gegenüber der Vorperiode: Bereitschaft ${c.readiness > 0 ? '+' : ''}`
-         + `${Math.round(c.readiness)}, Schlaf ${isNum(c.sleep) ? `${c.sleep > 0 ? '+' : ''}${de(c.sleep)} h` : '—'}`);
-  }
-  L.push('');
-
-  L.push('## Ernährung');
-  L.push(`- Kalorien: Ø ${isNum(s.nutrition.kcalAvg) ? Math.round(s.nutrition.kcalAvg) : '—'} `
-       + `(Ziel Ø ${isNum(s.nutrition.targetKcalAvg) ? Math.round(s.nutrition.targetKcalAvg) : '—'})`);
-  L.push(`- Kalorien getroffen: ${s.nutrition.kcalHits}/${s.nutrition.kcalCompared} `
-       + `(${pct(s.nutrition.kcalHitRate)})`);
-  L.push(`- Protein: Ø ${isNum(s.nutrition.proteinAvg) ? Math.round(s.nutrition.proteinAvg) : '—'} g, `
-       + `erreicht an ${s.nutrition.proteinHits}/${s.nutrition.proteinCompared} Tagen`);
-
-  /* Der Yazio-Wochenschnitt ist die maßgebliche Zahl, nicht die Tageswerte —
-     deshalb steht er hier und nicht in einer Fußnote. */
-  const weekStart = weekStartKey(s.period.start);
-  const week = getWeekMacros(state ?? {}, weekStart);
-  if ([week.kcal, week.proteinG, week.carbsG, week.fatG].some(isNum)) {
-    L.push(`- Yazio-Wochenschnitt (Woche ab ${weekStart}): `
-         + `${isNum(week.kcal) ? Math.round(week.kcal) : '—'} kcal, `
-         + `${isNum(week.proteinG) ? Math.round(week.proteinG) : '—'} g Protein, `
-         + `${isNum(week.carbsG) ? Math.round(week.carbsG) : '—'} g KH, `
-         + `${isNum(week.fatG) ? Math.round(week.fatG) : '—'} g Fett`);
-  }
-  L.push('');
-
-  L.push('## Training');
-  L.push(`- Einheiten: ${s.logging.daysWithTraining}`);
-  L.push(`- Sätze: ${s.training.sets}`
-       + (isNum(c.sets) ? ` (${c.sets > 0 ? '+' : ''}${c.sets} zur Vorperiode)` : ''));
-  L.push(`- Tonnage: ${Math.round(s.training.tonnage).toLocaleString('de-DE')} kg`);
-  L.push('- Volumen je Muskelgruppe:');
-  const lines = volumeLines(s.training.volume);
-  L.push(...(lines.length ? lines : ['  - nichts geloggt']));
-  L.push('');
-  L.push(`- Fußball: ${s.football.matches} Spiel(e), ${s.football.teamSessions} Mannschaftstraining(s)`);
-  L.push('');
-
-  if (review.stagnating.length) {
-    L.push('## Ohne Fortschritt');
-    for (const st of review.stagnating) {
-      L.push(`- ${st.name}: geschätzte Maximalkraft ${de(st.from)} → ${de(st.to)} kg `
-           + `über ${st.weeks} Wochen`);
-    }
-    L.push('');
-  }
-
-  L.push('## Volumenverlauf');
-  for (const w of review.trend) {
-    L.push(`- ab ${w.weekStart}: ${w.sets} Sätze, Bereitschaft `
-         + `${isNum(w.readiness) ? Math.round(w.readiness) : '—'}`);
-  }
-  L.push('');
-
-  L.push('## Befunde der App');
-  if (review.flags.length === 0) L.push('- keine');
-  for (const f of review.flags) {
-    L.push(`- **[${f.severity}] ${f.title}** — ${f.detail}`);
-    if (f.action) L.push(`  Vorschlag: ${f.action}`);
-  }
-  L.push('');
-
-  if (isNum(s.insights?.sleepVsReadiness?.difference)) {
-    L.push('## Zusammenhang');
-    const d = s.insights.sleepVsReadiness;
-    L.push(`- Nach Nächten unter ${de(SHORT_SLEEP_H)} h lag die Bereitschaft im `
-         + `Schnitt ${Math.round(Math.abs(d.difference))} Punkte `
-         + `${d.difference < 0 ? 'niedriger' : 'höher'} `
-         + `(${d.inGroup} kurze gegen ${d.outGroup} normale Nächte)`);
-    L.push('');
-  }
-
-  if (review.archive?.length) {
-    L.push('## Frühere Monate');
-    for (const m of review.archive) {
-      L.push(`- ${m.month}: Gewicht ${de(m.weightLast)} kg, Bereitschaft `
-           + `${isNum(m.readinessAvg) ? Math.round(m.readinessAvg) : '—'}, ${m.sets ?? '—'} Sätze`);
-    }
-    L.push('');
-  }
-
-  L.push('---');
-  L.push('Bitte schau dir das an: Was fällt dir auf, was die Regeln der App nicht '
-       + 'sehen können? Was soll ich in der kommenden Woche konkret anders machen?');
-
-  return L.join('\n');
-}
-
-/** Rohdaten der Tage — für tiefere Analysen im Gespräch. */
-export function daysToMarkdown(state, keys) {
-  const L = ['| Tag | kg | Schlaf | Bereit. | Kater | kcal | Protein | Sätze |',
-             '|---|---|---|---|---|---|---|---|'];
-  for (const key of keys) {
-    const d = getDay(state, key);
-    const sets = (d.sessions ?? [])
-      .flatMap((s) => s.exercises ?? [])
-      .reduce((n, e) => n + (e.sets ?? []).filter(Boolean).length, 0);
-    L.push(`| ${key} | ${de(d.weightKg)} | ${de(d.checkin?.sleepHours)} | `
-         + `${isNum(d.readiness) ? Math.round(d.readiness) : '—'} | `
-         + `${d.checkin?.soreness ?? '—'} | ${d.nutrition?.kcal ?? '—'} | `
-         + `${d.nutrition?.proteinG ?? '—'} | ${sets || '—'} |`);
-  }
-  return L.join('\n');
-}

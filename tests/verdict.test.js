@@ -1,8 +1,8 @@
 import { suite, test, eq, deepEq, isTrue, isFalse, close } from './harness.js';
 import {
-  volumeVerdict, progressVerdict, reviewFeedback, monthReviewDue,
-  buildFlags, monthlyReview, weeklyReview, reviewQuestions, buildMonthRecord,
-  SEVERITY_TONE, VOLUME_BAND,
+  volumeVerdict, progressVerdict, overallVerdict, monthReviewDue,
+  buildFlags, monthlyReview, weeklyReview, buildMonthRecord,
+  SEVERITY_TONE, VOLUME_BAND, VERDICT_MIN_COVERAGE, FLAG_TOPIC,
 } from '../js/lib/review.js';
 import {
   emptyState, emptyDay, withReviewRecord, firstTrackedMonth, firstTrackedDay,
@@ -167,62 +167,118 @@ suite('review — Kurzform der Befunde', () => {
       isTrue(['good', 'ok', 'bad', 'idle'].includes(tone), tone);
     }
   });
-});
 
-suite('review — Rückmeldung in der App', () => {
-  const state = stateWithSets(40);
-  const review = monthlyReview(state, MONTH);
-  const questions = reviewQuestions(review, state);
-
-  test('ohne Antwort gibt es keine Rückmeldung', () => {
-    const fb = reviewFeedback(review, questions, {});
-    isFalse(fb.ready);
-    eq(fb.missing, 10);
-    deepEq(fb.points, []);
-  });
-
-  test('mit einer Antwort steht die Rückmeldung, mit Hinweis auf die offenen', () => {
-    const fb = reviewFeedback(review, questions, { sleep: 'Handy' });
-    isTrue(fb.ready);
-    eq(fb.missing, 9);
-    isTrue(fb.headline.includes('1 von 10'), `war: "${fb.headline}"`);
-  });
-
-  test('HÖCHSTENS DREI PRIORITÄTEN', () => {
-    // Eine Liste mit sieben Prioritäten hat keine.
-    const fb = reviewFeedback(review, questions, { sleep: 'x' });
-    isTrue(fb.points.length <= 3, `waren ${fb.points.length}`);
-    isTrue(fb.points.length >= 1, 'mindestens eine Aussage muss dastehen');
-  });
-
-  test('jede Priorität trägt Farbe, Titel und Text', () => {
-    const fb = reviewFeedback(review, questions, { sleep: 'x' });
-    for (const p of fb.points) {
-      isTrue(['good', 'ok', 'bad', 'idle'].includes(p.tone), p.tone);
-      isTrue(p.title.length > 0);
-      isTrue(p.text.length > 0);
+  test('JEDER BEFUND GEHÖRT IN GENAU EIN FENSTER', () => {
+    /* Das Review sortiert nach Thema. Ein Befund ohne Thema landete stumm im
+       Auffangbehälter und wäre auf dem Screen nicht mehr zu finden. */
+    const erlaubt = ['weight', 'food', 'training', 'recovery', 'data'];
+    const flags = buildFlags(summary, summary, { profile: baseState().profile });
+    for (const f of flags) {
+      isTrue(erlaubt.includes(f.topic), `${f.id}: Thema "${f.topic}"`);
+      isTrue(f.id in FLAG_TOPIC, `${f.id} steht nicht in FLAG_TOPIC`);
     }
   });
 
-  test('DIE ANTWORT AUF FRAGE ZEHN KOMMT WÖRTLICH ZURÜCK', () => {
-    /* Die App kann Freitext nicht lesen. Was sie kann: die Entscheidung des
-       Monats unverändert wiedergeben — das ist ehrlicher als eine
-       Scheininterpretation. */
-    const satz = 'Nur eine Sache: Schlaf. Ziel 7,5 h.';
-    const fb = reviewFeedback(review, questions, { sleep: 'x', next: satz });
-    eq(fb.decision, satz);
+  test('FLAG_TOPIC kennt keine Themen, die es nicht gibt', () => {
+    const erlaubt = ['weight', 'food', 'training', 'recovery', 'data'];
+    for (const [id, topic] of Object.entries(FLAG_TOPIC)) {
+      isTrue(erlaubt.includes(topic), `${id}: "${topic}"`);
+    }
+  });
+});
+
+suite('review — das Urteil über den Zeitraum', () => {
+  /**
+   * Ein sauberer Monat: genug erfasst, genug trainiert, gut geschlafen.
+   * `setsProTag` an den drei Gym-Tagen trifft ungefähr das Planvolumen —
+   * ohne Training wäre jedes Urteil „läuft schief", und dann könnte man an
+   * diesem Monat nichts anderes mehr prüfen.
+   */
+  function monatMit(patch, setsProTag = 15) {
+    const days = {};
+    for (let i = 1; i <= 30; i += 1) {
+      const key = `2026-06-${String(i).padStart(2, '0')}`;
+      const wochentag = new Date(`${key}T12:00:00`).getDay();
+      days[key] = {
+        ...emptyDay(), weightKg: 80, readiness: 80,
+        checkin: { sleepHours: 8, energy: 4, soreness: 2, stress: 2 },
+        sessions: [1, 2, 4].includes(wochentag) ? [{
+          planId: 'a-push',
+          exercises: [{
+            exId: 'ohp_db',
+            sets: Array.from({ length: setsProTag }, () => ({ reps: 8, kg: 20 + i })),
+          }],
+        }] : [],
+        ...patch,
+      };
+    }
+    return baseState({ days });
+  }
+
+  test('ZU WENIG ERFASST heißt kein Urteil, nicht „passt"', () => {
+    /* Der wichtigste Fall: ein grünes „passt" über acht Tagen wäre eine
+       Lüge, die sich gut anfühlt. */
+    const days = {};
+    for (let i = 1; i <= 5; i += 1) {
+      days[`2026-06-${String(i).padStart(2, '0')}`] = { ...emptyDay(), weightKg: 80 };
+    }
+    const v = overallVerdict(monthlyReview(baseState({ days }), MONTH));
+    isFalse(v.judged, 'bei dünner Erfassung wird nicht geurteilt');
+    eq(v.tone, 'idle');
+    isTrue(v.coverage < VERDICT_MIN_COVERAGE);
   });
 
-  test('ohne Antwort auf Frage zehn bleibt die Entscheidung leer', () => {
-    eq(reviewFeedback(review, questions, { sleep: 'x' }).decision, '');
-    eq(reviewFeedback(review, questions, { sleep: 'x', next: '   ' }).decision, '');
+  test('ohne Alarm und ohne Warnung: passt', () => {
+    const v = overallVerdict(monthlyReview(monatMit({}), MONTH));
+    isTrue(v.judged);
+    eq(v.tone, 'good');
+    eq(v.word, 'Passt');
+    deepEq(v.reasons, [], 'ein grünes Urteil hat keine Gründe zum Nachbessern');
   });
 
-  test('sind alle beantwortet, sagt die Überschrift das', () => {
-    const alle = Object.fromEntries(questions.map((q) => [q.id, 'Antwort']));
-    const fb = reviewFeedback(review, questions, alle);
-    eq(fb.missing, 0);
-    isTrue(fb.headline.toLowerCase().includes('alle zehn'), `war: "${fb.headline}"`);
+  test('ein Alarm kippt das Urteil auf rot', () => {
+    // Vier Stunden Schlaf sind ein Alarm, kein Hinweis.
+    const v = overallVerdict(monthlyReview(monatMit({
+      checkin: { sleepHours: 4, energy: 4, soreness: 2, stress: 2 },
+    }), MONTH));
+    eq(v.tone, 'bad');
+    eq(v.word, 'Läuft schief');
+    isTrue(v.reasons.length > 0, 'ein Urteil ohne Grund ist ein Orakel');
+  });
+
+  test('höchstens drei Gründe, schärfste zuerst', () => {
+    const v = overallVerdict(monthlyReview(monatMit({
+      checkin: { sleepHours: 4, energy: 1, soreness: 5, stress: 5 },
+      readiness: 20,
+    }), MONTH));
+    isTrue(v.reasons.length <= 3, `${v.reasons.length} Gründe sind keine Prioritäten`);
+    isTrue(v.reasons.every((r) => typeof r.topic === 'string'),
+      'jeder Grund muss wissen, in welchem Fenster er steht');
+  });
+
+  test('EIN MONAT OHNE EINEN SATZ IST NIE „passt"', () => {
+    /* volumeVerdict hält sich bei null Sätzen bewusst zurück. Das
+       Gesamturteil darf sich nicht hinter dieser Zurückhaltung verstecken. */
+    const v = overallVerdict(monthlyReview(monatMit({ sessions: [] }), MONTH));
+    eq(v.tone, 'bad');
+    isTrue(v.reasons.some((r) => r.title === 'Nicht trainiert'),
+      'der Grund muss beim Namen genannt werden');
+  });
+
+  test('fehlendes Volumen kippt das Urteil, auch ohne einen einzigen Befund', () => {
+    // Ein Drittel des Plans: die Befunde sehen davon nichts, das Urteil schon.
+    const v = overallVerdict(monthlyReview(monatMit({}, 5), MONTH));
+    isTrue(v.tone === 'bad' || v.tone === 'ok', `war ${v.tone}`);
+    isTrue(v.reasons.some((r) => r.topic === 'training'));
+  });
+
+  test('das Urteil ist immer eine der vier Farben', () => {
+    for (const state of [baseState(), monatMit({})]) {
+      const v = overallVerdict(monthlyReview(state, MONTH));
+      isTrue(['good', 'ok', 'bad', 'idle'].includes(v.tone), v.tone);
+      isTrue(typeof v.word === 'string' && v.word.length > 0);
+      isTrue(typeof v.headline === 'string' && v.headline.length > 0);
+    }
   });
 });
 
@@ -380,7 +436,7 @@ suite('review — Wochen-Review bleibt schlank', () => {
     // Ein Monats-Datensatz aus einem Wochen-Review muss abgelehnt werden.
     let threw = false;
     try {
-      buildMonthRecord(week, state, {});
+      buildMonthRecord(week, state, null);
     } catch {
       threw = true;
     }

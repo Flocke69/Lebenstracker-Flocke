@@ -9,11 +9,11 @@ sammeln.
 
 | Bereich | Funktion |
 |---|---|
-| **Heute** | Antippbares Wochenband (Tage durchblättern), Check-in als Fenster, „Training starten", Verschieben mit Empfehlung, Gewicht mit Wochenstreifen, am Monatsende die Aufforderung zum Review |
+| **Heute** | Antippbares Wochenband (Tage durchblättern), Check-in als Fenster, „Training starten", Verschieben mit Empfehlung, Gewicht mit Wochenstreifen, sonntags die Erinnerung an den Yazio-Wochenschnitt und am Monatsende die zum Review |
 | **Training** | Alle drei Einheiten auf einem Screen, Logger im Fenster mit laufender Trainingsuhr und 3-Minuten-Satzpause, „letztes Mal" an jeder Übung |
 | **Essen** | Zwei Abschnitte: *Essen und Makros* (Yazio-Wochenschnitt gegen das Wochenziel, Urteil, Tagesziel) und *Gewicht* (Woche und Gesamtverlauf) |
 | **Trends** | Drei Abschnitte: *Training*, *Essen*, *Gewicht*. Eine Farbe je Messgröße, ein Satz Befund pro Chart |
-| **Review** | Befunde als farbige Stichpunkte, die wichtigsten Zahlen, ein Urteil für Volumen und Fortschritt. Im Monat dazu: zehn Fragen, Rückmeldung, **Monatsdatei-Export** und Rückimport |
+| **Review** | Oben das Urteil in einem Wort („Passt" / „Nachjustieren" / „Läuft schief"), darunter vier Fenster mit Grafik und eigenem Urteil: *Gewicht*, *Essen*, *Training*, *Erholung*. Im Monat dazu: **Monatsdatei-Export** und „Monat abhaken" |
 | **Profil** ⚙ | Kalorienziel, Defizit-Ausnahmetage, Makros pro Kilo, Spiel- und Trainingstage, Aktivitätsfaktoren, Zurücksetzen |
 | **Archiv** ↓ | Sicherung erzeugen und zurückspielen, Monatsabschluss, Liste der abgeschlossenen Monate |
 
@@ -54,6 +54,12 @@ ohne Daten liest sich wie ein Fehler, nicht wie eine Lücke.
 
 **Ohne Sicherung wird nichts gelöscht.** „Monat abschließen" ist so lange gesperrt, bis die
 Exportdatei tatsächlich erzeugt wurde. Das ist eine Bedingung im Code, kein Hinweistext.
+
+**Das Review urteilt selbst — außer die Daten tragen es nicht.** Hier standen einmal zehn Fragen
+fürs Monatsgespräch. Sie sind raus: ein Review, das erst durch zehn Freitextfelder am Monatsende
+entsteht, findet nicht statt. Stattdessen fasst `overallVerdict` zusammen, was ohnehin schon
+geurteilt wird — Befunde, Volumen, Fortschritt. Unter 50 % erfassten Tagen sagt die App
+ausdrücklich **nichts**: ein grünes „Passt" über acht Tagen wäre eine Lüge, die sich gut anfühlt.
 
 ## Datenhaltung
 
@@ -112,6 +118,36 @@ der Yazio-Wochenschnitt, das Review-Regelwerk samt Monats-Datensatz und der Mona
 **iPhone (Safari):** Seite öffnen → Teilen-Symbol → „Zum Home-Bildschirm".
 **Android (Chrome):** Seite öffnen → Menü → „App installieren".
 
+## Erinnerungen einrichten
+
+Die App kann **keine** Benachrichtigungen aufs Display schicken. Sie hat keinen
+Server, und ohne Server kann sich eine Webseite nicht zu einer Uhrzeit selbst
+wecken — die einzige Browser-Schnittstelle, die das je konnte, hat Apple nie
+ausgeliefert. Was die App tut: sobald du sie öffnest, steht der fällige Hinweis
+ganz oben auf dem Heute-Screen, farbig und mit einem Knopf, der genau dorthin
+führt, wo die Eingabe passiert.
+
+Für den echten Stups aufs Display: zwei Erinnerungen in der iPhone-App
+**Erinnerungen**, einmal angelegt, laufen für immer.
+
+**1. Wochenschnitt — jeden Sonntag um 20 Uhr**
+
+1. App *Erinnerungen* öffnen → **+ Neue Erinnerung**
+2. Titel: `Yazio-Wochenschnitt in den Lebenstracker`
+3. Auf das **ⓘ** rechts tippen
+4. **Datum** an → nächsten Sonntag wählen
+5. **Uhrzeit** an → `20:00`
+6. **Wiederholen** → **Jede Woche**
+7. Oben rechts **Fertig**
+
+**2. Monats-Review — am Monatsletzten**
+
+Gleicher Weg, Titel `Monats-Review im Lebenstracker ansehen`, Datum auf den
+letzten Tag des Monats, Uhrzeit `20:00`, **Wiederholen → Monatlich**.
+
+> Der Monatsletzte ist nicht immer der 31. Wer es genau haben will, nimmt
+> **Wiederholen → Eigene → Monatlich → Letzter Tag**.
+
 ## Aufbau
 
 ```
@@ -124,8 +160,9 @@ js/views/             Rendering pro Screen
   sheet.js            Overlay-Fenster (liegt außerhalb von #app)
   clock.js            ein Sekundentakt für Trainingsuhr und Satzpause
   gauge.js            Statusgrafik, die die Punktzahl ersetzt
+  review.js           Urteil oben, vier Themenfenster darunter
 data/                 Übungskatalog und Trainingsplan
-tools/                check_contrast.py — prüft die Farbpalette
+tools/                serve.py — Entwicklungsserver · check_contrast.py — Farbpalette
 docs/superpowers/specs/  Design-Dokument
 ```
 

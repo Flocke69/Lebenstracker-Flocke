@@ -37,6 +37,7 @@ import { sessionForDay, weekPlan, moveTargets, recommendMove, sessionDoneInWeek 
   from '../lib/schedule.js';
 import { exportReminder } from '../lib/archive.js';
 import { monthReviewDue } from '../lib/review.js';
+import { weekEntryDue } from '../lib/weekly.js';
 import { totalSets } from '../lib/volume.js';
 import { movingAverage, series, WEIGHT_WINDOW } from '../lib/aggregate.js';
 import { checkinSummary, openCheckin } from './checkin.js';
@@ -477,15 +478,60 @@ function weightCard(state, shownKey, store) {
       'Kilo und mehr — bewertet wird nur der 7-Tage-Schnitt.'));
 }
 
-/* ─── Monats-Review ──────────────────────────────────────────────────────── */
+/* ─── Die zwei Erinnerungen ──────────────────────────────────────────────── */
+
+/**
+ * Warum die Erinnerungen HIER stehen und nicht als Handy-Benachrichtigung.
+ *
+ * Diese App hat keinen Server. Eine echte Push-Nachricht braucht einen — der
+ * Browser kann sich nicht selbst zu einer Uhrzeit wecken, und die einzige
+ * Schnittstelle, die das je konnte, hat Apple nie ausgeliefert. Eine
+ * Benachrichtigung, die nur ankommt, während die App offen ist, erinnert an
+ * nichts.
+ *
+ * Also das Ehrliche: der Hinweis liegt ganz oben auf dem Screen, den Flocke
+ * täglich öffnet. Er ist groß, farbig und führt mit einem Tipp genau dorthin,
+ * wo die Handlung passiert. Für den echten Stups aufs Display gibt es zwei
+ * feste Erinnerungen in der iPhone-App — einmal eingerichtet, siehe README.
+ */
+
+/**
+ * Sonntagabend: der Yazio-Wochenschnitt fehlt.
+ *
+ * Die einzige wiederkehrende Eingabe, an die die App von sich aus erinnert.
+ * Ohne diese vier Zahlen kann sie über das Essen nichts sagen — weder im
+ * Wochen- noch im Monats-Review. Die Regel liegt in js/lib/weekly.js.
+ */
+function weekMacrosCard(state, today, navigate) {
+  const due = weekEntryDue(state, today);
+  if (!due.due) return null;
+
+  const tone = due.kind === 'today' ? 'ok' : 'bad';
+
+  return el('div', { class: `card card--tone card--${tone}` },
+    el('div', { class: 'card__head' },
+      el('span', { class: 'eyebrow', text: 'Wochenschnitt' }),
+      el('span', {
+        class: `chip chip--${tone}`,
+        text: due.kind === 'today' ? 'heute dran' : 'fehlt noch',
+      })),
+    el('p', { class: 'today__headline', text: 'Vier Zahlen aus Yazio' }),
+    el('p', { class: 'today__focus', text: due.text }),
+    el('div', { style: 'height: var(--space-3)' }),
+    el('button', {
+      type: 'button', class: 'btn btn--primary btn--block',
+      text: 'Wochenschnitt eintragen',
+      onclick: () => navigate('essen'),
+    }));
+}
 
 /**
  * Die Aufforderung zum Monats-Review.
  *
  * Sie steht ganz oben und nur dann, wenn sie fällig ist — am letzten Tag des
- * Monats und danach, solange das Review fehlt. Warum überhaupt hier und nicht
- * im Reiter Review: an einen Termin, den man selbst suchen muss, denkt niemand
- * am 31. abends. Die Regel dahinter liegt in js/lib/review.js.
+ * Monats und danach, solange der Monat nicht abgehakt ist. Warum überhaupt
+ * hier und nicht im Reiter Review: an einen Termin, den man selbst suchen
+ * muss, denkt niemand am 31. abends. Die Regel liegt in js/lib/review.js.
  */
 function monthReviewCard(state, today) {
   const due = monthReviewDue(state, today);
@@ -503,7 +549,7 @@ function monthReviewCard(state, today) {
     el('div', { style: 'height: var(--space-3)' }),
     el('button', {
       type: 'button', class: 'btn btn--primary btn--block',
-      text: 'Review öffnen — zehn Fragen',
+      text: `${formatMonth(due.month)} ansehen`,
       onclick: () => {
         /* Direkt in den Monat des fälligen Reviews springen, nicht bloß in den
            Reiter: der Offset rechnet vom laufenden Monat zurück. */
@@ -577,7 +623,10 @@ export function render({ store, navigate }) {
     weekband(state, shownKey, navigateDay),
     dayHeader(shownKey, navigateDay),
     backupReminder(state, today, navigate),
+    /* Reihenfolge nach Dringlichkeit: die Sicherung schützt vor Datenverlust,
+       der Monat kommt einmal im Monat, der Wochenschnitt jede Woche. */
     monthReviewCard(state, today),
+    weekMacrosCard(state, today, navigate),
     checkinCard(store, shownKey),
     trainingCard(store, state, shownKey),
     weightCard(state, shownKey, store));

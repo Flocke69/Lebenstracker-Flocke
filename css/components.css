@@ -498,6 +498,13 @@
 .macro__fill--fat { background: var(--m-fat); }
 .macro__fill--volume { background: var(--c-volume); }
 
+/* Im Review zählt nicht, WELCHES Makro es ist, sondern ob es im Ziel liegt —
+   dort trägt der Balken deshalb die Statusfarbe statt der Makrofarbe. */
+.macro__fill--good { background: var(--good-500); }
+.macro__fill--ok { background: var(--ok-500); }
+.macro__fill--bad { background: var(--bad-500); }
+.macro__fill--idle { background: var(--data-500); }
+
 /* Über dem Ziel wird der Balken nicht länger — ein Ausrutscher würde sonst
    die Skala aller anderen Tage zerstören. Stattdessen der Signalton. */
 .macro__fill--over {
@@ -2309,7 +2316,58 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 .verdict--bad b { color: var(--bad-500); }
 .verdict--idle b { color: var(--ink); }
 
-/* ─── Review: Leitsatz, Stichpunkte, Kennzahlen, Urteile ────────────────── */
+/* ─── Review: Urteil, Themenfenster, Stichpunkte, Kennzahlen ────────────── */
+
+/* DAS URTEIL, ganz oben und in einem Wort.
+   Es beantwortet die einzige Frage des Screens — der Rest darunter ist die
+   Begründung. Deshalb bekommt es die Größe einer Kennzahl und nicht die einer
+   Überschrift: man soll es lesen, ohne hinzusehen. */
+.judgement__word {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  line-height: var(--leading-tight);
+  text-transform: uppercase;
+  letter-spacing: var(--track-wide);
+}
+
+.judgement__word--good { color: var(--good-500); }
+.judgement__word--ok { color: var(--ok-500); }
+.judgement__word--bad { color: var(--bad-500); }
+.judgement__word--idle { color: var(--chalk-500); }
+
+.judgement__line {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-md);
+  line-height: var(--leading-snug);
+}
+
+.judgement__reasons {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line-200);
+}
+
+/* Der Einzeiler unter der Überschrift eines Themenfensters: was die App zu
+   diesem Thema sagt, in einem Satz. Alles darunter belegt ihn. */
+.topic__line {
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--ink-muted);
+}
+
+/* Fließtext im aufgeklappten Teil. */
+.reveal__text {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--ink-muted);
+}
+
+.reveal__text:last-child {
+  margin-bottom: 0;
+}
 
 /* Der Satz über den Stichpunkten. Etwas größer als Fließtext, damit man ihn
    liest, bevor man die Liste überfliegt. */
@@ -2384,11 +2442,13 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   grid-column: 1 / -1;
 }
 
-/* Die wichtigsten Zahlen: drei je Reihe, jede mit Statusfarbe. */
+/* Die wichtigsten Zahlen: drei je Reihe, jede mit Statusfarbe. Im Review
+   stehen sie unter der Grafik des Themenfensters und brauchen Luft nach oben. */
 .keynums {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-2);
+  margin: var(--space-3) 0;
 }
 
 .keynum {

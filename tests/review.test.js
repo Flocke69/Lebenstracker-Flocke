@@ -4,7 +4,7 @@ import { addDays, weekStartKey } from '../js/lib/dates.js';
 import { weekSummary } from '../js/lib/aggregate.js';
 import {
   THRESHOLDS, estimatedMax, bestEffort, stagnatingExercises, volumeTrend,
-  buildFlags, weeklyReview, monthlyReview, toMarkdown, daysToMarkdown,
+  buildFlags, weeklyReview, monthlyReview,
 } from '../js/lib/review.js';
 
 const PROFILE = {
@@ -251,50 +251,6 @@ suite('review — Defizit-Wächter', () => {
   });
 });
 
-suite('review — Übergabe an Claude', () => {
-  const s = fillWeek(withProfile(base(), { kcalOffset: -500, offsetExemptDayTypes: ['match'] }),
-                     weekStartKey(MO), { sleep: 6, protein: 120 });
-  const review = weeklyReview(s, MO);
-  const md = toMarkdown(review, s);
-
-  test('der Block enthält die Einstellungen', () => {
-    isTrue(md.includes('-500 kcal'), md.slice(0, 400));
-    isTrue(md.includes('match'), 'die Ausnahmetage müssen drinstehen');
-  });
-
-  test('der Block enthält Rohzahlen, nicht nur Befunde', () => {
-    // Die App sieht nur, was als Regel drinsteht. Muster wie "die schlechten
-    // Nächte liegen immer donnerstags" fallen ihr nicht auf.
-    for (const abschnitt of ['## Erfassung', '## Körper und Befinden',
-                             '## Ernährung', '## Training', '## Volumenverlauf']) {
-      isTrue(md.includes(abschnitt), `Abschnitt fehlt: ${abschnitt}`);
-    }
-  });
-
-  test('der Block endet mit einer Frage an Claude', () => {
-    isTrue(md.trimEnd().endsWith('anders machen?'), md.slice(-200));
-  });
-
-  test('Befunde stehen mit Dringlichkeit und Vorschlag drin', () => {
-    isTrue(md.includes('**[alarm]') || md.includes('**[warn]'), 'keine Befunde im Block');
-    isTrue(md.includes('Vorschlag:'), 'keine Handlungsempfehlung im Block');
-  });
-
-  test('Tagesrohdaten lassen sich als Tabelle ausgeben', () => {
-    const tabelle = daysToMarkdown(s, [MO, addDays(MO, 1)]);
-    isTrue(tabelle.includes('| Tag |'), tabelle.slice(0, 120));
-    isTrue(tabelle.split('\n').length === 4, 'Kopf, Trenner und zwei Zeilen');
-  });
-
-  test('ein leeres Review erzeugt trotzdem gültiges Markdown', () => {
-    const leer = weeklyReview(base(), MO);
-    const out = toMarkdown(leer, base());
-    isTrue(out.includes('# Wochen-Review'));
-    isFalse(out.includes('undefined'), 'kein undefined im Text');
-    isFalse(out.includes('NaN'), 'kein NaN im Text');
-  });
-});
-
 suite('review — Monats-Review', () => {
   test('umfasst den ganzen Monat und vergleicht mit dem Vormonat', () => {
     let s = base();
@@ -317,6 +273,7 @@ suite('review — Monats-Review', () => {
     const r = monthlyReview(s, '2026-07');
     eq(r.archive.length, 1);
     close(r.archive[0].weightLast, 82, 0.001);
-    isTrue(toMarkdown(r, s).includes('Frühere Monate'));
+    close(r.archive[0].readinessAvg, 71, 0.001);
+    eq(r.archive[0].sets, 190);
   });
 });

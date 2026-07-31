@@ -1,332 +1,392 @@
-/* Review — kurz, farbig, und am Monatsende mit einer Datei.
+/* Review — vier Fenster, ein Urteil, keine Fragen.
  *
- * Aufbau, und jeder Punkt ist eine Entscheidung gegen den ersten Entwurf:
+ * Was dieser Screen beantwortet, ist genau eine Frage: PASST DAS. Ganz oben
+ * steht die Antwort in einem Wort, darunter liegt sie in vier sortierten
+ * Fenstern auseinandergenommen — Gewicht, Essen, Training, Erholung. Jedes
+ * Fenster trägt seine Farbe, seine Grafik, seine Zahlen und die Befunde, die
+ * dazugehören.
  *
- *   1. Befunde als EIN Block mit farbigen Stichpunkten. Vorher waren es bis zu
- *      sechs Karten mit je vier Sätzen — das liest niemand am Sonntagabend.
- *   2. Die wichtigsten Zahlen in einer Reihe, nicht in einer Tabelle mit sieben
- *      Zeilen.
- *   3. Volumen und Fortschritt als je EIN Urteil ("passt" / "zu niedrig"), die
- *      Einzelwerte nur auf Wunsch. Die Frage lautet nicht "wie viele Sätze hat
- *      der Trizeps bekommen".
- *   4. Nur im MONAT: die zehn Fragen, eine Rückmeldung dazu, der Dateiexport
- *      und der Rückweg. In der Woche nichts davon — ein Kopierblock, den man
- *      wöchentlich sieht und monatlich braucht, wird zu Möbel.
+ * ─── Was hier NICHT mehr steht, und warum ──────────────────────────────────
  *
- * Der Dateiexport ist der wichtigste Knopf dieses Screens. Am Monatsende muss
- * die JSON-Datei in Flockes Dateien landen; ohne sie kann iOS den Speicher der
- * App leeren und ein Monat ist weg.
+ * DIE ZEHN FRAGEN SIND WEG. Flockes Ansage: unwichtig. Und sie hatte recht —
+ * ein Review, das erst durch zehn Freitextfelder am Monatsende entsteht,
+ * findet nicht statt. Die App urteilt jetzt selbst (overallVerdict in
+ * lib/review.js), aus denselben Regeln, die auch die Befunde erzeugen.
+ *
+ * DIE KOPIERBLÖCKE SIND WEG. Weder die Übergabe ins Gespräch noch der
+ * Datensatz zum Zurückeinlesen. Die Sicherungsdatei bleibt — sie ist die
+ * einzige Kopie, die überlebt, wenn iOS den Speicher der Web-App leert. Der
+ * Rückweg für eine solche Datei liegt im Archiv, wo er hingehört.
+ *
+ * DIE LANGE BEFUNDLISTE IST WEG. Sie stand als eigener Block ganz oben und
+ * warf Schlaf, Protein und Stillstand in einen Topf. Jeder Befund trägt jetzt
+ * ein Thema (FLAG_TOPIC) und steht in seinem Fenster.
+ *
+ * WAS EINEN MONAT ABHAKT: der Knopf „Monat abhaken" legt den Datensatz ab.
+ * Solange der fehlt, erinnert der Heute-Screen weiter (monthReviewDue) — die
+ * Erinnerung braucht etwas, das sie beendet.
  */
 
 import { todayKey, weekStartKey, addDays, addMonths, monthKey, formatMonth }
   from '../lib/dates.js';
 import {
-  weeklyReview, monthlyReview,
-  reviewQuestions, buildMonthRecord, monthRecordToText, parseMonthRecord,
-  volumeVerdict, progressVerdict, reviewFeedback,
+  weeklyReview, monthlyReview, buildMonthRecord, monthWeekAverages,
+  volumeVerdict, progressVerdict, overallVerdict,
 } from '../lib/review.js';
 import { monthDays, weekKeys } from '../lib/dates.js';
 import { getReviewRecord, firstTrackedMonth } from '../lib/state.js';
+import { weekCheck, weekEntryDue } from '../lib/weekly.js';
 import { buildExport, exportFilename, withExportStamp, hasFreshExport } from '../lib/archive.js';
 import { LOW_READINESS, SHORT_SLEEP_H } from '../lib/aggregate.js';
 import { MUSCLE_GROUPS } from '../../data/exercises.js';
-import { el, replace, card, panel, int, dec } from './dom.js';
+import { lineChart, barChart } from './chart.js';
+import { el, replace, panel, int, dec } from './dom.js';
 
-const SEVERITY_WORD = {
-  alarm: 'Dringend', warn: 'Achtung', info: 'Hinweis', good: 'Gut',
-};
-
-/* ─── Befunde: ein Block, farbige Stichpunkte ────────────────────────────── */
+/* ─── Kleinteile, die jedes Fenster benutzt ──────────────────────────────── */
 
 /**
- * Der Leitsatz über den Stichpunkten.
+ * Der Kopf eines Themenfensters: Überschrift links, Urteil als Chip rechts.
  *
- * Er zählt, was los ist, damit man nach einem Blick weiß, ob man weiterlesen
- * muss. „3 Befunde" sagt das nicht — „eines dringend, zwei zum Ansehen" schon.
+ * Die Farbe sitzt an der Karte UND am Chip. Doppelt, mit Absicht: die Kante
+ * sieht man beim Scrollen aus dem Augenwinkel, das Wort liest man, wenn man
+ * stehen bleibt.
  */
-function leadSentence(flags) {
-  const n = (s) => flags.filter((f) => f.severity === s).length;
-  const alarm = n('alarm');
-  const warn = n('warn');
-  const info = n('info');
-
-  if (alarm === 0 && warn === 0 && info === 0) {
-    return 'Nichts aufgefallen — dafür fehlen aber auch die Daten.';
-  }
-  if (alarm === 0 && warn === 0) {
-    return 'Nichts Dringendes. Was auffällt, steht unten.';
-  }
-
-  const parts = [];
-  if (alarm) parts.push(`${alarm} ${alarm === 1 ? 'Sache ist dringend' : 'Sachen sind dringend'}`);
-  if (warn) parts.push(`${warn} ${warn === 1 ? 'braucht' : 'brauchen'} Aufmerksamkeit`);
-  if (info) parts.push(`${info} zum Ansehen`);
-  return `${parts.join(', ')}.`;
+function topicCard(title, verdict, ...children) {
+  return el('div', { class: `card card--tone card--${verdict.tone}` },
+    el('div', { class: 'card__head' },
+      el('span', { class: 'eyebrow', text: title }),
+      el('span', { class: `chip chip--${verdict.tone}`, text: verdict.word })),
+    el('p', { class: 'topic__line', text: verdict.line }),
+    ...children);
 }
 
-function findingsCard(review) {
-  const flags = review.flags;
-  const worst = flags.some((f) => f.severity === 'alarm') ? 'bad'
-    : flags.some((f) => f.severity === 'warn') ? 'ok'
-      : flags.some((f) => f.severity === 'info') ? 'idle' : 'good';
+/** Eine Reihe Kennzahlen, wie sie in jedem Fenster unter der Grafik steht. */
+function numbers(cells) {
+  return el('div', { class: 'keynums' },
+    cells.map((cell) => el('div', { class: `keynum keynum--${cell.tone ?? 'idle'}` },
+      el('span', { class: 'keynum__value' },
+        cell.value,
+        cell.unit ? el('span', { class: 'keynum__unit', text: cell.unit }) : null),
+      el('span', { class: 'keynum__label', text: cell.label }))));
+}
 
-  const actions = flags.filter((f) => f.action && f.severity !== 'good');
+/** Die Befunde eines Themas als Stichpunkte. Ohne Befunde: nichts. */
+function findings(review, topic, keep) {
+  const mine = review.flags.filter((f) => f.topic === topic && f.severity !== 'good');
+  if (mine.length === 0) return null;
 
-  return el('div', { class: `card card--tone card--${worst}` },
-    el('div', { class: 'card__head' },
-      el('span', { class: 'eyebrow', text: 'Was auffällt' }),
-      el('span', {
-        class: `chip chip--${worst}`,
-        text: `${flags.length} ${flags.length === 1 ? 'Befund' : 'Befunde'}`,
-      })),
+  const actions = mine.filter((f) => f.action);
 
-    el('p', { class: 'lead', text: leadSentence(flags) }),
-
-    /* Ein Stichpunkt je Befund: Punkt in der Statusfarbe, Titel, Kurzform.
-       Die Langfassung steckt unten im aufklappbaren Teil und im Kopierblock. */
+  return el('div', null,
     el('ul', { class: 'bullets' },
-      flags.map((f) => el('li', { class: `bullets__item bullets__item--${f.tone}` },
-        el('span', { class: 'bullets__word', text: SEVERITY_WORD[f.severity] }),
+      mine.map((f) => el('li', { class: `bullets__item bullets__item--${f.tone}` },
         el('span', { class: 'bullets__text' },
           el('b', { text: f.title }),
           ` — ${f.short}`)))),
-
     actions.length > 0
-      ? el('details', { class: 'reveal reveal--table', dataset: { keep: 'befund-details' } },
+      ? el('details', { class: 'reveal', dataset: { keep } },
         el('summary', null, el('span', { text: 'Was zu tun ist' })),
         el('div', { class: 'reveal__body' },
-          el('ul', { class: 'bullets' },
-            actions.map((f) => el('li', { class: `bullets__item bullets__item--${f.tone}` },
-              el('span', { class: 'bullets__text' },
-                el('b', { text: `${f.title}: ` }), f.action))))))
+          actions.map((f) => el('p', { class: 'reveal__text' },
+            el('b', { text: `${f.title}: ` }), f.action))))
       : null);
 }
 
-/* ─── Die wichtigsten Zahlen ─────────────────────────────────────────────── */
-
-function deltaText(value, unit, digits = 1) {
+const arrow = (value, unit, digits = 1) => {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${dec(value, digits)}${unit ? ` ${unit}` : ''}`;
-}
+  const sign = value > 0 ? '↑' : value < 0 ? '↓' : '→';
+  return `${sign} ${dec(Math.abs(value), digits)}${unit ? ` ${unit}` : ''}`;
+};
+
+/* ─── Das Urteil, ganz oben ──────────────────────────────────────────────── */
 
 /**
- * Die Veränderung als Pfeil plus Betrag.
+ * Ein Wort, ein Satz, höchstens drei Gründe.
  *
- * Vorher stand dort „+101 davor" — das liest sich wie „101 davor" und behauptet
- * damit das Gegenteil. Ein Pfeil hat keine Leserichtung, die man verwechseln
- * kann, und die Legende darunter erklärt ihn einmal.
+ * Der Rest des Screens ist die Begründung. Wer nur wissen will, ob etwas zu
+ * tun ist, hört hier auf zu lesen — und genau das soll gehen.
  */
-function deltaArrow(value, unit, digits = 1) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
-  const arrow = value > 0 ? '↑' : value < 0 ? '↓' : '→';
-  const amount = dec(Math.abs(value), digits);
-  return `${arrow} ${amount}${unit ? ` ${unit}` : ''}`;
+function verdictCard(verdict, review) {
+  return el('div', { class: `card card--tone card--${verdict.tone} judgement` },
+    el('div', { class: 'card__head' },
+      el('span', { class: 'eyebrow', text: 'Passt das?' }),
+      el('span', {
+        class: `chip chip--${verdict.tone}`,
+        text: `${review.summary.period.dayCount} Tage`,
+      })),
+    el('p', { class: `judgement__word judgement__word--${verdict.tone}`, text: verdict.word }),
+    el('p', { class: 'judgement__line', text: verdict.headline }),
+
+    verdict.reasons.length > 0
+      ? el('ul', { class: 'bullets judgement__reasons' },
+        verdict.reasons.map((r) => el('li', { class: `bullets__item bullets__item--${r.tone}` },
+          el('span', { class: 'bullets__text' },
+            el('b', { text: r.title }),
+            ` — ${r.short}`))))
+      : null,
+
+    verdict.judged
+      ? null
+      : el('p', { class: 'card__note' },
+        'Trag Check-in und Gewicht täglich ein — darunter ist jedes Urteil geraten.'));
 }
 
+/* ─── Fenster 1: Gewicht ─────────────────────────────────────────────────── */
+
 /**
- * Sechs Zahlen, die zählen — und je eine Veränderung dazu.
+ * Der Verlauf, nicht der Tageswert.
  *
- * Eine Zahl ohne Vergleich ist auf diesem Screen wertlos: 79,9 kg sagt nichts,
- * „79,9 kg, −0,5 gegenüber davor" sagt alles.
+ * Die Punkte sind das Rauschen, die Linie ist die Aussage. Bewertet wird
+ * ausschließlich die Linie: ein einzelner Morgen sagt über eine Recomp nichts.
  */
-function numbersCard(review) {
-  const s = review.summary;
-  const c = review.comparison;
+function weightCard(review, keys) {
+  const w = review.summary.weight;
+  const enough = w.measured >= 4;
+  const delta = w.delta;
 
-  const cells = [
-    {
-      label: 'Gewicht', value: dec(s.weight.last, 1), unit: 'kg',
-      delta: deltaArrow(s.weight.delta, 'kg'),
-      tone: !Number.isFinite(s.weight.delta) ? 'idle'
-        : Math.abs(s.weight.delta) <= 0.5 ? 'good' : 'ok',
-    },
-    {
-      label: 'Schlaf', value: dec(s.sleep.avg, 1), unit: 'h',
-      delta: deltaArrow(c.sleep, 'h'),
-      tone: !Number.isFinite(s.sleep.avg) ? 'idle'
-        : s.sleep.avg >= 7.5 ? 'good' : s.sleep.avg >= SHORT_SLEEP_H ? 'ok' : 'bad',
-    },
-    {
-      label: 'Sätze', value: int(s.training.sets), unit: '',
-      delta: deltaArrow(c.sets, '', 0),
-      tone: s.training.sets > 0 ? 'good' : 'idle',
-    },
-    {
-      label: 'Einheiten', value: int(s.logging.daysWithTraining), unit: '',
-      delta: null,
-      tone: s.logging.daysWithTraining > 0 ? 'good' : 'idle',
-    },
-    {
-      label: 'Protein Ø', value: int(s.nutrition.proteinAvg), unit: 'g',
-      delta: deltaArrow(c.protein, 'g', 0),
-      tone: !Number.isFinite(s.nutrition.proteinHitRate) ? 'idle'
-        : s.nutrition.proteinHitRate >= 0.7 ? 'good' : 'bad',
-    },
-    {
-      label: 'Schlechte Tage', value: int(s.readiness.lowDays), unit: '',
-      delta: null,
-      tone: s.readiness.days === 0 ? 'idle'
-        : s.readiness.lowDays <= 2 ? 'good' : s.readiness.lowDays <= 5 ? 'ok' : 'bad',
-    },
-  ];
+  const verdict = !enough
+    ? { tone: 'idle', word: 'zu selten gewogen', line: `Nur ${w.measured} Messungen im Zeitraum — für eine Richtung braucht es mehr.` }
+    : !Number.isFinite(delta)
+      ? { tone: 'idle', word: 'keine Richtung', line: 'Der geglättete Schnitt hat noch keine zwei Punkte.' }
+      : Math.abs(delta) <= 0.4
+        ? { tone: 'good', word: 'steht', line: `Der Schnitt hat sich um ${dec(Math.abs(delta), 1)} kg bewegt — das ist Rauschen, keine Richtung.` }
+        : delta < 0
+          ? { tone: 'good', word: `${dec(delta, 1)} kg`, line: 'Der Schnitt fällt. Bei einer Recomp ist das die gewollte Richtung — solange die Kraft mitgeht.' }
+          : { tone: 'ok', word: `+${dec(delta, 1)} kg`, line: 'Der Schnitt steigt. Wenn das nicht gewollt ist, liegt es an den Kalorien.' };
 
-  return card('Die Zahlen',
-    el('span', { class: 'chip', text: `${s.period.dayCount} Tage` }),
-    el('div', { class: 'keynums' },
-      cells.map((cell) => el('div', { class: `keynum keynum--${cell.tone}` },
-        el('span', { class: 'keynum__value' },
-          cell.value,
-          cell.unit ? el('span', { class: 'keynum__unit', text: cell.unit }) : null),
-        el('span', { class: 'keynum__label', text: cell.label }),
-        cell.delta
-          ? el('span', { class: 'keynum__delta', text: cell.delta })
-          : null))),
-    el('p', { class: 'card__note' },
-      'Pfeil und Zahl darunter: die Veränderung gegenüber der Vorperiode.'));
+  return topicCard('Gewicht', verdict,
+    lineChart({
+      keys,
+      raw: w.values,
+      avg: w.avgSeries,
+      title: 'Gewichtsverlauf mit 7-Tage-Schnitt',
+      unit: 'kg',
+      series: 'weight',
+      height: 150,
+    }),
+    numbers([
+      { label: 'zuletzt', value: dec(w.last, 1), unit: 'kg', tone: 'idle' },
+      { label: 'Veränderung', value: arrow(delta, 'kg'), unit: '', tone: verdict.tone },
+      { label: 'gewogen', value: int(w.measured), unit: `/${review.summary.period.dayCount}`,
+        tone: enough ? 'good' : 'bad' },
+    ]),
+    findings(review, 'weight', 'review-gewicht'));
 }
 
-/* ─── Volumen und Fortschritt: ein Urteil ────────────────────────────────── */
+/* ─── Fenster 2: Essen ───────────────────────────────────────────────────── */
 
 /**
- * Passt es, und geht es voran?
+ * Die Yazio-Wochenschnitte gegen das Ziel.
  *
- * Zwei Sätze statt zwölf Balken. Die Einzelwerte je Muskelgruppe bleiben
- * erreichbar — aber wer sie nicht braucht, muss nicht daran vorbeiscrollen.
+ * In der WOCHE sind das vier Zahlen mit vier Urteilen — Kalorien, Protein,
+ * Kohlenhydrate, Fett. Im MONAT sind es die Wochen des Monats als Balken:
+ * einzelne Wochen sagen mehr als ein Monatsmittel, weil man an ihnen sieht,
+ * wann es gekippt ist.
+ *
+ * Fehlt der Wochenschnitt, wird das GESAGT und nicht mit einem Strich
+ * überspielt. Eine leere Zelle liest man als Null.
  */
-function volumeCard(review) {
+function foodCard(store, state, review, mode, anchor, navigate) {
+  const missing = weekEntryDue(state, todayKey());
+
+  if (mode === 'week') {
+    const check = weekCheck(state, anchor);
+    const worst = check.fields.reduce((acc, f) =>
+      (f.tone === 'bad' ? 'bad' : f.tone === 'ok' && acc !== 'bad' ? 'ok' : acc),
+    check.hasEntry ? 'good' : 'idle');
+
+    const verdict = !check.hasEntry
+      ? { tone: 'idle', word: 'fehlt', line: 'Für diese Woche steht kein Yazio-Schnitt in der App.' }
+      : worst === 'good'
+        ? { tone: 'good', word: 'im Ziel', line: 'Alle vier Werte liegen im Rahmen.' }
+        : { tone: worst, word: worst === 'bad' ? 'daneben' : 'knapp daneben', line: check.suggestion.reason };
+
+    return topicCard('Essen', verdict,
+      el('div', null,
+        check.fields.map((f) => el('div', { class: 'macro' },
+          el('div', { class: 'macro__head' },
+            el('span', { class: 'macro__name', text: f.field.label }),
+            el('span', { class: 'macro__value' },
+              `${int(f.actual)} ${f.field.unit}`,
+              el('span', {
+                class: `macro__delta macro__delta--${f.tone}`,
+                text: ` ${f.word}`,
+              }))),
+          el('div', { class: 'macro__track' },
+            el('div', {
+              class: `macro__fill macro__fill--${f.tone}`,
+              style: `width: ${Math.min((f.ratio ?? 0) * 100, 100).toFixed(1)}%`,
+            }))))),
+      el('p', { class: 'card__note' },
+        check.target
+          ? `Ziel dieser Woche: ${int(check.target.kcal)} kcal, `
+            + `${int(check.target.proteinG)} g Protein pro Tag.`
+          : 'Ohne vollständiges Profil gibt es kein Ziel zum Vergleichen.'),
+      !check.hasEntry
+        ? el('button', {
+          type: 'button', class: 'btn btn--primary btn--block',
+          text: 'Wochenschnitt eintragen',
+          onclick: () => navigate('essen'),
+        })
+        : null,
+      findings(review, 'food', 'review-essen'));
+  }
+
+  // Monat: die Wochen des Monats als Balken gegen das Ziel.
+  const weeks = monthWeekAverages(state, review.month);
+  const entered = weeks.filter((w) => typeof w.kcal === 'number').length;
+  const n = review.summary.nutrition;
+  const hitRate = n.proteinHitRate;
+
+  const verdict = entered === 0
+    ? { tone: 'idle', word: 'fehlt', line: 'Kein einziger Wochenschnitt in diesem Monat — über das Essen lässt sich nichts sagen.' }
+    : entered < weeks.length
+      ? { tone: 'ok', word: `${entered}/${weeks.length} Wochen`, line: 'Es fehlen Wochenschnitte. Was hier steht, gilt nur für die eingetragenen Wochen.' }
+      : !Number.isFinite(hitRate)
+        ? { tone: 'idle', word: 'kein Ziel', line: 'Ohne Tagesziele gibt es nichts zu vergleichen.' }
+        : hitRate >= 0.7
+          ? { tone: 'good', word: 'passt', line: `Protein an ${Math.round(hitRate * 100)} % der Tage erreicht. Das trägt.` }
+          : { tone: 'bad', word: 'zu wenig Protein', line: `Nur an ${Math.round(hitRate * 100)} % der Tage erreicht. Unter Defizit ist Protein das, was die Muskeln hält.` };
+
+  return topicCard('Essen', verdict,
+    weeks.length > 0
+      ? barChart({
+        keys: weeks.map((w) => w.weekStart),
+        values: weeks.map((w) => w.kcal ?? null),
+        title: 'Kalorien je Woche im Monat',
+        unit: 'kcal',
+        series: 'kcal',
+        hint: 'Tippe eine Woche an.',
+        refs: Number.isFinite(n.targetKcalAvg)
+          ? [{ value: n.targetKcalAvg, label: 'Ziel' }]
+          : [],
+        height: 130,
+      })
+      : null,
+    numbers([
+      { label: 'kcal Ø', value: int(n.kcalAvg), unit: '', tone: 'idle' },
+      { label: 'Protein Ø', value: int(n.proteinAvg), unit: 'g', tone: 'idle' },
+      { label: 'Protein erreicht', value: Number.isFinite(hitRate) ? `${Math.round(hitRate * 100)}` : '—',
+        unit: '%', tone: !Number.isFinite(hitRate) ? 'idle' : hitRate >= 0.7 ? 'good' : 'bad' },
+    ]),
+    missing.due
+      ? el('button', {
+        type: 'button', class: 'btn btn--block',
+        text: 'Fehlenden Wochenschnitt eintragen',
+        onclick: () => navigate('essen'),
+      })
+      : null,
+    findings(review, 'food', 'review-essen'));
+}
+
+/* ─── Fenster 3: Training ────────────────────────────────────────────────── */
+
+/**
+ * Zwei Fragen an einem Ort: kam genug zusammen, und geht es voran?
+ *
+ * Die Sätze je Muskelgruppe stehen darunter, aber aufgeklappt — die Frage
+ * lautet nicht „wie viele Sätze hat der Trizeps bekommen".
+ */
+function trainingCard(review) {
   const volume = volumeVerdict(review.summary);
   const progress = progressVerdict(review);
-  const rows = Object.entries(review.summary.training.volume)
+  const t = review.summary.training;
+
+  /* Das schärfere der beiden Urteile färbt das Fenster: ein grüner Rahmen über
+     drei stehenden Übungen wäre eine Beschönigung. */
+  const rank = { bad: 0, ok: 1, good: 2, idle: 3 };
+  const worse = rank[volume.tone] <= rank[progress.tone] ? volume : progress;
+
+  const rows = Object.entries(t.volume)
     .filter(([, sets]) => sets > 0)
     .sort((a, b) => b[1] - a[1]);
   const max = rows[0]?.[1] ?? 1;
 
-  return el('div', { class: `card card--tone card--${volume.tone}` },
-    el('div', { class: 'card__head' },
-      el('span', { class: 'eyebrow', text: 'Volumen und Fortschritt' }),
-      el('span', { class: `chip chip--${volume.tone}`, text: volume.headline })),
+  return topicCard('Training',
+    { tone: worse.tone, word: volume.headline, line: volume.detail },
 
     el('div', { class: 'twoverdict' },
-      el('div', { class: `verdictbox verdictbox--${volume.tone}` },
-        el('span', { class: 'verdictbox__label', text: 'Volumen' }),
-        el('span', { class: 'verdictbox__head', text: volume.headline }),
-        el('p', { class: 'verdictbox__text', text: volume.detail })),
       el('div', { class: `verdictbox verdictbox--${progress.tone}` },
         el('span', { class: 'verdictbox__label', text: 'Fortschritt' }),
         el('span', { class: 'verdictbox__head', text: progress.headline }),
         el('p', { class: 'verdictbox__text', text: progress.detail }))),
 
+    numbers([
+      { label: 'Sätze', value: int(t.sets), unit: '', tone: volume.tone },
+      { label: 'Einheiten', value: int(review.summary.logging.daysWithTraining), unit: '',
+        tone: t.sessionCount > 0 ? 'good' : 'idle' },
+      { label: 'bewegt', value: int(t.tonnage / 1000), unit: 't', tone: 'idle' },
+    ]),
+
     rows.length > 0
-      ? el('details', { class: 'reveal reveal--table', dataset: { keep: 'volumen-details' } },
-        el('summary', null, el('span', { text: 'Je Muskelgruppe' })),
+      ? el('details', { class: 'reveal', dataset: { keep: 'review-volumen' } },
+        el('summary', null, el('span', { text: 'Sätze je Muskelgruppe' })),
         el('div', { class: 'reveal__body' },
-          rows.map(([key, sets]) => {
-            const diff = review.comparison.volume?.[key];
-            const tone = !Number.isFinite(diff) || Math.abs(diff) < 1 ? 'idle'
-              : diff > 0 ? 'good' : 'ok';
-            return el('div', { class: 'macro' },
-              el('div', { class: 'macro__head' },
-                el('span', { class: 'macro__name', text: MUSCLE_GROUPS[key] }),
-                el('span', { class: 'macro__value' },
-                  dec(sets, 1),
-                  el('span', {
-                    class: `macro__delta macro__delta--${tone}`,
-                    text: ` (${deltaText(diff, '', 1)})`,
-                  }))),
-              el('div', { class: 'macro__track' },
-                el('div', {
-                  class: 'macro__fill macro__fill--volume',
-                  style: `width: ${((sets / max) * 100).toFixed(1)}%`,
-                })));
-          })))
-      : null);
-}
-
-/* ─── Die zehn Fragen ────────────────────────────────────────────────────── */
-
-function questionsCard(store, state, review, questions, answers) {
-  const answered = questions.filter((q) => (answers[q.id] ?? '').trim() !== '').length;
-
-  const save = (id, value) => {
-    const next = { ...answers, [id]: value };
-    store.saveReview(buildMonthRecord(review, state, next, new Date().toISOString()));
-  };
-
-  const tone = answered === questions.length ? 'good' : answered > 0 ? 'ok' : 'idle';
-
-  return el('div', { class: `card card--tone card--${tone}` },
-    el('div', { class: 'card__head' },
-      el('span', { class: 'eyebrow', text: 'Die zehn Fragen' }),
-      el('span', { class: `chip chip--${tone}`, text: `${answered} von ${questions.length}` })),
-
-    el('p', { class: 'field__hint' },
-      'Aus den Zahlen dieses Monats gebaut. Die Antworten werden sofort ',
-      'gespeichert und gehen in die Monatsdatei mit.'),
-    el('div', { style: 'height: var(--space-4)' }),
-
-    questions.map((q, i) => el('div', { class: 'q' },
-      el('div', { class: 'q__head' },
-        el('span', { class: 'q__num', text: String(i + 1) }),
-        el('div', null,
-          el('span', { class: 'q__topic', text: q.topic }),
-          el('p', { class: 'q__text', text: q.question }))),
-      el('p', { class: 'q__context', text: q.context }),
-      el('textarea', {
-        rows: 2,
-        placeholder: 'Antwort …',
-        value: answers[q.id] ?? '',
-        'aria-label': q.question,
-        onchange: (e) => save(q.id, e.target.value),
-      }))));
-}
-
-/**
- * Die Rückmeldung der App zu den Antworten.
- *
- * Ehrlich in beiden Richtungen: sie sagt, was die Zahlen hergeben, und sie sagt
- * auch, dass sie den Freitext nicht liest. Eine App, die auf „Handy lag im Bett"
- * mit einer Schlafhygiene-Predigt antwortet, wird nach dem zweiten Monat nicht
- * mehr geöffnet.
- */
-function feedbackCard(review, questions, answers) {
-  const fb = reviewFeedback(review, questions, answers);
-
-  if (!fb.ready) {
-    return el('div', { class: 'card card--tone card--idle' },
-      el('div', { class: 'card__head' },
-        el('span', { class: 'eyebrow', text: 'Rückmeldung' })),
-      el('p', { class: 'field__hint' },
-        'Beantworte mindestens eine Frage, dann steht hier, was die Zahlen dazu ',
-        'sagen.'));
-  }
-
-  return el('div', { class: `card card--tone card--${fb.tone}` },
-    el('div', { class: 'card__head' },
-      el('span', { class: 'eyebrow', text: 'Rückmeldung' }),
-      fb.missing > 0
-        ? el('span', { class: 'chip chip--ok', text: `${fb.missing} offen` })
-        : el('span', { class: 'chip chip--good', text: 'vollständig' })),
-
-    el('p', { class: 'lead', text: fb.headline }),
-
-    el('ul', { class: 'bullets' },
-      fb.points.map((p) => el('li', { class: `bullets__item bullets__item--${p.tone}` },
-        el('span', { class: 'bullets__text' },
-          el('b', { text: `${p.title}: ` }), p.text)))),
-
-    fb.decision
-      ? el('div', { class: 'decision' },
-        el('span', { class: 'decision__label', text: 'Deine eine Änderung für den nächsten Monat' }),
-        el('p', { class: 'decision__text', text: fb.decision }))
+          rows.map(([key, sets]) => el('div', { class: 'macro' },
+            el('div', { class: 'macro__head' },
+              el('span', { class: 'macro__name', text: MUSCLE_GROUPS[key] }),
+              el('span', { class: 'macro__value', text: dec(sets, 1) })),
+            el('div', { class: 'macro__track' },
+              el('div', {
+                class: 'macro__fill macro__fill--volume',
+                style: `width: ${((sets / max) * 100).toFixed(1)}%`,
+              }))))))
       : null,
 
-    el('p', { class: 'card__note' },
-      'Das hier sind die Regeln der App. Deine Antworten im Freitext kann sie ',
-      'nicht lesen — dafür gibt es den Kopierblock unten und das Gespräch.'));
+    findings(review, 'training', 'review-training'));
 }
 
-/* ─── Monatsdatei und Übergabe ───────────────────────────────────────────── */
+/* ─── Fenster 4: Erholung ────────────────────────────────────────────────── */
+
+/**
+ * Schlaf und Bereitschaft — der Hebel, der vor Training und Essen kommt.
+ *
+ * Gezeigt wird die Bereitschaft als Verlauf, weil man daran die schlechten
+ * Strecken sieht; der Schlaf steht als Zahl daneben, weil sein Verlauf ohne
+ * die Bereitschaft daneben nichts erklärt.
+ */
+function recoveryCard(review, keys) {
+  const s = review.summary;
+  const r = s.readiness;
+  const sleep = s.sleep;
+
+  const verdict = r.days === 0
+    ? { tone: 'idle', word: 'kein Check-in', line: 'Ohne Check-in gibt es keine Bereitschaft und keine Erklärung für schlechte Tage.' }
+    : Number.isFinite(sleep.avg) && sleep.avg < SHORT_SLEEP_H
+      ? { tone: 'bad', word: 'Schlaf zu kurz', line: `Ø ${dec(sleep.avg, 1)} Stunden. Das ist der stärkste Hebel, den du hast — vor Training und vor Essen.` }
+      : r.lowDays > Math.max(2, r.days * 0.25)
+        ? { tone: 'ok', word: 'viele schwache Tage', line: `${r.lowDays} Tage unter ${LOW_READINESS} Punkten. Meist ist das Schlaf, manchmal zu viel Volumen.` }
+        : { tone: 'good', word: 'trägt', line: `Ø ${dec(sleep.avg, 1)} h Schlaf, ${r.lowDays} schwache Tage. Das hält.` };
+
+  return topicCard('Erholung', verdict,
+    r.values.some((v) => typeof v === 'number')
+      ? lineChart({
+        keys,
+        raw: r.values,
+        avg: null,
+        title: 'Bereitschaft im Zeitraum',
+        unit: '',
+        digits: 0,
+        series: 'ready',
+        fromZero: true,
+        maxCap: 100,
+        refs: [{ value: LOW_READINESS, label: 'schwach' }],
+        height: 140,
+      })
+      : null,
+    numbers([
+      { label: 'Schlaf Ø', value: dec(sleep.avg, 1), unit: 'h',
+        tone: !Number.isFinite(sleep.avg) ? 'idle'
+          : sleep.avg >= 7.5 ? 'good' : sleep.avg >= SHORT_SLEEP_H ? 'ok' : 'bad' },
+      { label: 'kurze Nächte', value: int(sleep.nightsShort), unit: '',
+        tone: sleep.nights === 0 ? 'idle' : sleep.nightsShort <= 2 ? 'good' : 'ok' },
+      { label: 'schwache Tage', value: int(r.lowDays), unit: '',
+        tone: r.days === 0 ? 'idle' : r.lowDays <= 2 ? 'good' : r.lowDays <= 5 ? 'ok' : 'bad' },
+    ]),
+    findings(review, 'recovery', 'review-erholung'));
+}
+
+/* ─── Monatsdatei und Abhaken ────────────────────────────────────────────── */
 
 /**
  * Die Datei rausgeben.
@@ -360,19 +420,23 @@ async function deliver(json, filename) {
   return { ok: true, via: 'Download' };
 }
 
-function exportCard(store, state, review, mk, answers) {
+/**
+ * Sichern und abhaken — die zwei Handlungen am Monatsende.
+ *
+ * SICHERN ist die wichtigere. iOS kann den Speicher einer Web-App nach
+ * längerer Pause leeren; diese Datei ist die einzige Kopie, die das übersteht.
+ *
+ * ABHAKEN legt den Monat mit seinen Zahlen und dem Urteil ab. Das ist auch
+ * das, was die Erinnerung auf dem Heute-Screen beendet — ohne einen
+ * Abschluss würde sie ewig weiterfragen.
+ */
+function monthCard(store, state, review, mk) {
   const slot = el('div');
 
-  /* Die Bestätigung wird NICHT in den Slot geschrieben.
-   *
-   * `store.update` löst ein Neuzeichnen der ganzen Ansicht aus — eine Meldung
-   * im Slot wäre im selben Moment wieder weg. Genau das ist hier passiert: der
-   * Export lief, der Zeitstempel stand im Zustand, und auf dem Screen war
-   * nichts zu sehen.
-   *
-   * Die Bestätigung kommt deshalb aus dem ZUSTAND (`lastExportAt`, siehe
-   * unten). Der Slot bleibt für das, was KEIN Neuzeichnen auslöst: Abbruch
-   * und Fehler. */
+  /* Die Bestätigung kommt aus dem ZUSTAND, nicht in den Slot: `store.update`
+     zeichnet die ganze Ansicht neu, eine Meldung im Slot wäre im selben
+     Moment wieder weg. Der Slot bleibt für das, was KEIN Neuzeichnen
+     auslöst — Abbruch und Fehler. */
   async function exportFile() {
     replace(slot);
     const stamp = new Date().toISOString();
@@ -382,8 +446,6 @@ function exportCard(store, state, review, mk, answers) {
         replace(slot, el('p', { class: 'field__hint', text: 'Export abgebrochen — nichts gespeichert.' }));
         return;
       }
-      // Erst nach erfolgreicher Ausgabe stempeln — sonst öffnet ein
-      // abgebrochener Versuch die Sperre des Monatsabschlusses.
       store.update((s) => withExportStamp(s, stamp));
     } catch (err) {
       replace(slot, el('div', { class: 'notice notice--error' },
@@ -392,29 +454,8 @@ function exportCard(store, state, review, mk, answers) {
     }
   }
 
-  async function copyForClaude() {
-    replace(slot);
-    const text = monthRecordToText(
-      buildMonthRecord(review, state, answers, new Date().toISOString())
-    );
-    try {
-      await navigator.clipboard.writeText(text);
-      replace(slot, el('p', { class: 'field__hint', text: 'Kopiert. Füg es im Chat ein.' }));
-    } catch {
-      // Ohne Zwischenablage-Recht bleibt der Text zum Markieren stehen.
-      replace(slot,
-        el('p', { class: 'field__hint', text: 'Kopieren nicht erlaubt — Text markieren:' }),
-        el('textarea', { rows: 12, readOnly: true, value: text }));
-    }
-  }
-
-  /* Der Zeitstempel aus dem Zustand ist die Bestätigung: er überlebt das
-     Neuzeichnen und sagt beim nächsten Öffnen noch, ob der Monat gesichert ist.
-
-     „Gesichert" heißt: DIESER Monat wurde nach seinem Ende exportiert — nicht
-     „es gab irgendwann irgendeinen Export". Sonst stünde nach der ersten
-     Sicherung überhaupt an jedem Monat für immer ein grüner Chip. */
   const fresh = hasFreshExport(state, mk);
+  const done = Boolean(getReviewRecord(state, mk));
   const stamp = state.lastExportAt;
   const exported = typeof stamp === 'string' && !Number.isNaN(new Date(stamp).getTime())
     ? new Date(stamp)
@@ -428,131 +469,65 @@ function exportCard(store, state, review, mk, answers) {
 
   return el('div', { class: `card card--tone card--${fresh ? 'good' : 'bad'}` },
     el('div', { class: 'card__head' },
-      el('span', { class: 'eyebrow', text: 'Monatsdateien' }),
+      el('span', { class: 'eyebrow', text: 'Monat abschließen' }),
       el('span', {
         class: `chip chip--${fresh ? 'good' : 'bad'}`,
         text: fresh ? 'gesichert' : 'nicht gesichert',
       })),
 
     el('p', { class: 'field__hint' },
-      'Die Datei enthält jeden Tag im Detail, die verdichteten Zahlen, die ',
-      'Wochenschnitte und deine Antworten. iOS kann den Speicher von Web-Apps ',
-      'nach längerer Pause leeren — diese Datei ist die einzige Kopie, die das ',
-      'übersteht.'),
+      'Die Datei enthält jeden Tag im Detail, die verdichteten Zahlen und die ',
+      'Wochenschnitte. iOS kann den Speicher von Web-Apps nach längerer Pause ',
+      'leeren — diese Datei ist die einzige Kopie, die das übersteht.'),
     el('div', { style: 'height: var(--space-3)' }),
 
     el('button', {
       type: 'button', class: 'btn btn--primary btn--block',
-      text: `${formatMonth(mk)} exportieren`,
+      text: `${formatMonth(mk)} sichern`,
       onclick: exportFile,
     }),
     el('div', { style: 'height: var(--space-2)' }),
     el('button', {
-      type: 'button', class: 'btn btn--block',
-      text: 'Review für Claude kopieren',
-      onclick: copyForClaude,
+      type: 'button',
+      class: `btn btn--block${done ? ' btn--ghost' : ''}`,
+      text: done ? 'abgehakt — noch mal ablegen' : 'Monat abhaken',
+      onclick: () => store.saveReview(buildMonthRecord(review, state, new Date().toISOString())),
     }),
     slot,
     el('p', { class: `card__note card__note--${fresh ? 'good' : 'bad'}`, text: exportedText }),
     el('p', { class: 'card__note' },
-      'Der Kopierblock ist für das Gespräch, die Datei für deine Ablage. Der ',
-      'Block enthält am Ende denselben Datensatz — du kannst ihn unten wieder ',
-      'einlesen.'));
+      done
+        ? 'Abgehakt — der Heute-Screen fragt nicht mehr nach diesem Monat.'
+        : 'Solange der Monat nicht abgehakt ist, erinnert der Heute-Screen daran.'));
 }
 
-/**
- * Der Rückweg: Datensatz einlesen.
- *
- * Erst prüfen und zeigen, was drinsteht, dann auf Knopfdruck übernehmen. Nie
- * direkt beim Einfügen — ein Import, der ohne Rückfrage schreibt, überschreibt
- * irgendwann die Antworten eines Monats mit einem Fehlgriff aus der
- * Zwischenablage.
- */
-function importCard(store) {
-  const slot = el('div');
-  const input = el('textarea', {
-    rows: 4,
-    placeholder: 'Datensatz aus dem Gespräch hier einfügen …',
-    'aria-label': 'Monats-Datensatz einfügen',
-  });
-
-  function check() {
-    replace(slot);
-    let parsed;
-    try {
-      parsed = parseMonthRecord(input.value);
-    } catch (err) {
-      replace(slot, el('div', { class: 'notice notice--error' },
-        el('span', { class: 'notice__title', text: 'Nicht einlesbar' }),
-        err.message));
-      return;
-    }
-
-    const { record, answered, questionCount } = parsed;
-    replace(slot,
-      el('div', { class: 'notice notice--good' },
-        el('span', { class: 'notice__title', text: `${formatMonth(record.month)} erkannt` }),
-        `${answered} von ${questionCount} Fragen beantwortet, `,
-        `${record.summary?.period?.dayCount ?? '—'} Tage im Zeitraum.`),
-      el('button', {
-        type: 'button', class: 'btn btn--primary btn--block',
-        text: 'Diesen Monat übernehmen',
-        onclick: () => {
-          try {
-            store.saveReview(record);
-            input.value = '';
-            replace(slot, el('p', { class: 'field__hint' },
-              `${formatMonth(record.month)} liegt jetzt in der App.`));
-          } catch (err) {
-            replace(slot, el('div', { class: 'notice notice--error', text: err.message }));
-          }
-        },
-      }));
-  }
-
-  return card('Monat zurückimportieren', null,
-    el('p', { class: 'field__hint' },
-      'Den Block aus dem Gespräch hier einfügen. Ein Monat, der schon in der ',
-      'App liegt, wird ersetzt — ein zweites Review desselben Monats ist eine ',
-      'Korrektur, keine zweite Meinung.'),
-    el('div', { style: 'height: var(--space-3)' }),
-    input,
-    el('div', { style: 'height: var(--space-2)' }),
-    el('button', { type: 'button', class: 'btn btn--block', text: 'Prüfen', onclick: check }),
-    slot);
-}
-
-/** Was schon in der App liegt. */
-function storedCard(state) {
+/** Was schon abgelegt ist — der Inhalt des zugeklappten Abschnitts. */
+function storedList(state) {
   const reviews = [...(state.reviews ?? [])].reverse();
 
-  return card('Gespeicherte Monats-Reviews',
-    el('span', { class: 'chip', text: String(reviews.length) }),
+  return el('div', null,
     reviews.length === 0
       ? el('p', { class: 'field__hint' },
-        'Noch keiner. Beantworte die zehn Fragen — der Monat wird dabei ',
-        'automatisch gespeichert.')
+        'Noch keiner. Am Monatsende auf „Monat abhaken" — die Zahlen und das ',
+        'Urteil bleiben dann hier stehen, auch wenn die Tage längst verdichtet sind.')
       : el('div', { class: 'table-wrap' },
         el('table', null,
           el('thead', null, el('tr', null,
             el('th', { text: 'Monat' }),
             el('th', { text: 'Gewicht' }),
             el('th', { text: 'Sätze' }),
-            el('th', { text: 'Fragen' }))),
+            el('th', { text: 'Urteil' }))),
           el('tbody', null,
             reviews.map((r) => el('tr', null,
               el('td', { text: formatMonth(r.month) }),
               el('td', { text: dec(r.summary?.weight?.last, 1) }),
               el('td', { text: int(r.summary?.training?.sets) }),
-              el('td', {
-                text: `${(r.questions ?? []).filter((q) => q.answer).length}`
-                  + `/${(r.questions ?? []).length}`,
-              })))))));
+              el('td', { text: r.verdict?.word ?? '—' })))))));
 }
 
 /* ─── Zusammenbau ────────────────────────────────────────────────────────── */
 
-export function render({ store }) {
+export function render({ store, navigate }) {
   const state = store.getState();
   const today = todayKey();
 
@@ -564,8 +539,7 @@ export function render({ store }) {
   /* Vor dem ersten erfassten Monat gibt es nichts. Die Knöpfe führen nicht
      dorthin — eine getippte Adresse aber schon, und dann stünde dort eine leere
      Auswertung für einen Monat, den es in der App nicht gibt. Deshalb wird der
-     Zeitraum HIER geklemmt und nicht nur der Knopf gesperrt. Dieselbe Haltung
-     wie bei shownDayKey() auf dem Heute-Screen. */
+     Zeitraum HIER geklemmt und nicht nur der Knopf gesperrt. */
   const floorMonth = firstTrackedMonth(state, today);
   const floorDay = `${floorMonth}-01`;
 
@@ -589,26 +563,16 @@ export function render({ store }) {
 
   const review = mode === 'week' ? weeklyReview(state, anchor) : monthlyReview(state, mk);
   const keys = mode === 'week' ? weekKeys(anchor) : monthDays(mk);
+  const verdict = overallVerdict(review);
 
   const go = (m, o) => { location.hash = `#/review?mode=${m}&offset=${o}`; };
 
   /* Der Knopf wird gesperrt, sobald der nächste Schritt vor die Grenze führt —
-     gerechnet vom TATSÄCHLICH gezeigten Zeitraum, nicht vom gewünschten Offset.
-     Sonst bliebe er nach dem Klemmen oben aktiv und würde ins Leere zeigen. */
+     gerechnet vom TATSÄCHLICH gezeigten Zeitraum, nicht vom gewünschten Offset. */
   const backTarget = mode === 'month'
     ? addMonths(mk, -1)
-    // Im Wochenmodus zählt der Monat, in dem die vorige Woche BEGINNT.
     : monthKey(addDays(anchor, -7));
   const canGoBack = backTarget >= floorMonth;
-
-  /* Fragen und Antworten werden einmal berechnet und an alle Karten
-     weitergegeben: sonst rechnet reviewQuestions dreimal dasselbe. */
-  const questions = mode === 'month' ? reviewQuestions(review, state) : [];
-  const answers = mode === 'month'
-    ? Object.fromEntries(
-      (getReviewRecord(state, mk)?.questions ?? []).map((q) => [q.id, q.answer ?? ''])
-    )
-    : {};
 
   return el('div', { class: 'view' },
     el('h1', { text: 'Review' }),
@@ -642,31 +606,29 @@ export function render({ store }) {
         onclick: () => go(mode, offset + 1),
       })),
 
-    findingsCard(review),
-    numbersCard(review),
-    volumeCard(review),
+    verdictCard(verdict, review),
 
-    /* Alles Weitere gehört zum MONAT. Wöchentlich wären die zehn Fragen eine
-       Pflichtübung, die nach drei Wochen nicht mehr gemacht wird — und ein
-       Kopierblock, den man jede Woche sieht, wird zu Möbel. */
-    mode === 'month' ? questionsCard(store, state, review, questions, answers) : null,
-    mode === 'month' ? feedbackCard(review, questions, answers) : null,
-    mode === 'month' ? exportCard(store, state, review, mk, answers) : null,
+    /* Die vier Fenster, immer in derselben Reihenfolge. Sie ist nicht nach
+       Wichtigkeit sortiert, sondern nach Ursache: das Gewicht ist das
+       Ergebnis, das Essen die Ursache, Training und Erholung die Bedingungen.
+       Eine feste Reihenfolge findet man mit dem Daumen wieder — eine, die sich
+       nach Dringlichkeit umsortiert, nicht. */
+    weightCard(review, keys),
+    foodCard(store, state, review, mode, anchor, navigate),
+    trainingCard(review),
+    recoveryCard(review, keys),
+
+    mode === 'month' ? monthCard(store, state, review, mk) : null,
     mode === 'month'
-      ? panel({ title: 'Zurückimportieren und Archiv', keep: 'review-archiv', tone: 'idle' },
-        importCard(store),
-        storedCard(state))
-      : null,
-
-    mode === 'week'
-      ? el('p', { class: 'field__hint' },
-        'Kopieren und Dateiexport stehen im Monats-Review — dort, wo sie ',
-        'gebraucht werden.')
+      ? panel({
+        title: 'Abgehakte Monate',
+        keep: 'review-archiv',
+        chip: String((state.reviews ?? []).length),
+      }, storedList(state))
       : null,
 
     el('p', { class: 'field__hint' },
       `Schwellen: Schlaf unter ${dec(SHORT_SLEEP_H, 1)} h, Bereitschaft unter `,
       `${LOW_READINESS}, Protein an weniger als 70 % der Tage erreicht — ein `,
-      'Tag zählt ab 90 % des Ziels. Alle Regeln stehen in js/lib/review.js ',
-      'und sind nachlesbar.'));
+      'Tag zählt ab 90 % des Ziels. Alle Regeln stehen in js/lib/review.js.'));
 }

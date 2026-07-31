@@ -140,6 +140,9 @@ function referenceLine(g, box, y, label) {
 
 /* ─── Antippen ───────────────────────────────────────────────────────────── */
 
+/* Der Hinweis unter dem Chart, bevor jemand tippt. Er ist ein Parameter und
+   kein fester Text: über Wochenbalken „Tippe einen Tag an" zu schreiben wäre
+   schlicht falsch. */
 function readout(initial) {
   return el('p', { class: 'chart__readout', text: initial });
 }
@@ -179,7 +182,7 @@ function addHitAreas(svg, box, keys, values, out, format) {
  */
 export function lineChart({
   keys, raw, avg, title, unit = '', height = 150, digits = 1, refs = [], fromZero = false,
-  series = null, maxCap = null,
+  series = null, maxCap = null, hint = 'Tippe einen Tag an.',
 }) {
   const box = frame(height);
   const { min, max } = bounds([...raw, ...(avg ?? [])],
@@ -232,7 +235,7 @@ export function lineChart({
     return el('div', { class: 'chart-wrap' }, svg);
   }
 
-  const out = readout('Tippe einen Tag an.');
+  const out = readout(hint);
   addHitAreas(svg, box, keys, raw, out, format);
 
   return el('div', { class: 'chart-wrap' }, svg, out);
@@ -247,7 +250,7 @@ export function lineChart({
  */
 export function barChart({
   keys, values, title, unit = '', height = 130, digits = 0, refs = [], highlightIndex = null,
-  series = null,
+  series = null, hint = 'Tippe einen Tag an.',
 }) {
   const box = frame(height);
   const { min, max } = bounds(values, { fromZero: true, include: refs.map((r) => r.value) });
@@ -281,7 +284,7 @@ export function barChart({
 
   for (const ref of refs) referenceLine(svg, box, scaleY(ref.value), ref.label);
 
-  const out = readout('Tippe einen Tag an.');
+  const out = readout(hint);
   addHitAreas(svg, box, keys, values, out, format);
 
   return el('div', { class: 'chart-wrap' }, svg, out);

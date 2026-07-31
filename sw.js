@@ -41,9 +41,11 @@
  *   v17 Beintag neu (Bizeps vor Trizeps, Beinbeuger, Kniebeuge, RDL,
  *       Beinstrecker), Wiederholungen während der Pause gesperrt, grüner
  *       Bildschirm nach der Pause, Abschließen fragt nach offenen Übungen
+ *   v18 Review ohne Fragen: ein Urteil oben, vier Themenfenster mit Grafik
+ *       darunter, Erinnerung an den Yazio-Wochenschnitt am Sonntag
  */
 
-const CACHE_VERSION = 'v17';
+const CACHE_VERSION = 'v18';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [

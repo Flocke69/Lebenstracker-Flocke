@@ -16,7 +16,8 @@
  * Kein DOM, keine Rundung. Geprüft in tests/weekly.test.js.
  */
 
-import { weekKeys, weekStartKey, addDays } from './dates.js';
+import { weekKeys, weekStartKey, addDays, weekdayOf, formatDayShort, todayKey }
+  from './dates.js';
 import { getDay, weightOn, dayTypeFor, getWeekMacros, firstTrackedDay } from './state.js';
 import { dayTargets, ageOn, DRIFT_THRESHOLD_KG, KCAL_ADJUST_STEP } from './energy.js';
 import { mean, movingAverage, series, WEIGHT_WINDOW } from './aggregate.js';
@@ -248,6 +249,77 @@ export function weekCheck(state, anyDayKey) {
     suggestion,
     hasEntry: WEEK_FIELDS.some((f) => isNum(actual[f.key])),
   };
+}
+
+/* ─── Erinnerung: der Wochenschnitt fehlt noch ───────────────────────────── */
+
+/** Steht für diese Woche überhaupt eine Zahl in der App? */
+export function hasWeekEntry(state, weekStart) {
+  const macros = getWeekMacros(state, weekStart);
+  return WEEK_FIELDS.some((f) => isNum(macros[f.key]));
+}
+
+/**
+ * Bis wann nach dem Wochenende gilt der Wochenschnitt noch als nachtragbar.
+ * Mittwoch ist die Grenze: danach ist die neue Woche schon halb vorbei.
+ */
+const ENTRY_GRACE_WEEKDAY = 3;
+
+/**
+ * Fehlt der Yazio-Wochenschnitt?
+ *
+ * Der Sonntagabend ist der Moment: die Woche ist zu Ende, Yazio hat ihren
+ * Schnitt, und ohne diese vier Zahlen kann die App über das Essen NICHTS
+ * sagen — weder im Wochen- noch im Monats-Review. Deshalb ist das die einzige
+ * wiederkehrende Eingabe, an die die App von sich aus erinnert.
+ *
+ * Zwei Fälle, wie beim Monats-Review:
+ *
+ *   SONNTAG — die laufende Woche endet heute. Der richtige Moment.
+ *   MONTAG BIS MITTWOCH — die Woche davor fehlt noch. Wer am Sonntag keine
+ *   Zeit hatte, soll nicht durchs Raster fallen. Ab Donnerstag ist Schluss:
+ *   eine Erinnerung, die eine ganze Woche steht, wird zu Tapete.
+ *
+ * `today` ist ein Parameter, damit die Regel ohne Kalender prüfbar bleibt.
+ *
+ * @returns {{due: boolean, weekStart: string|null, kind: string, text: string}}
+ */
+export function weekEntryDue(state, today = todayKey()) {
+  /* Eine leere App fragt nach nichts. `firstTrackedDay` fällt ohne Daten auf
+     den Monatsersten zurück — damit läge die Vorwoche formal im erlaubten
+     Bereich, und eine frisch eingerichtete App würde am Montag sofort nach
+     einer Woche fragen, die es für sie nie gab. */
+  if (Object.keys(state?.days ?? {}).length === 0) {
+    return { due: false, weekStart: null, kind: 'none', text: '' };
+  }
+
+  const floor = firstTrackedDay(state, today);
+  const weekday = weekdayOf(today);
+  const thisWeek = weekStartKey(today);
+
+  if (weekday === 0 && thisWeek >= floor && !hasWeekEntry(state, thisWeek)) {
+    return {
+      due: true,
+      weekStart: thisWeek,
+      kind: 'today',
+      text: 'Die Woche ist zu Ende. Hol dir den Wochenschnitt aus Yazio — '
+        + 'ohne die vier Zahlen kann ich über dein Essen nichts sagen.',
+    };
+  }
+
+  const previous = addDays(thisWeek, -7);
+  if (weekday >= 1 && weekday <= ENTRY_GRACE_WEEKDAY
+      && previous >= floor && !hasWeekEntry(state, previous)) {
+    return {
+      due: true,
+      weekStart: previous,
+      kind: 'overdue',
+      text: `Für die Woche ab ${formatDayShort(previous)} fehlt der `
+        + 'Wochenschnitt aus Yazio. Solange er fehlt, hat die Woche kein Essen.',
+    };
+  }
+
+  return { due: false, weekStart: null, kind: 'none', text: '' };
 }
 
 /**
