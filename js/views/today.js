@@ -623,11 +623,19 @@ export function render({ store, navigate }) {
     weekband(state, shownKey, navigateDay),
     dayHeader(shownKey, navigateDay),
     backupReminder(state, today, navigate),
-    /* Reihenfolge nach Dringlichkeit: die Sicherung schützt vor Datenverlust,
-       der Monat kommt einmal im Monat, der Wochenschnitt jede Woche. */
-    monthReviewCard(state, today),
-    weekMacrosCard(state, today, navigate),
     checkinCard(store, shownKey),
     trainingCard(store, state, shownKey),
+
+    /* DIE ERINNERUNGEN STEHEN UNTER DEM TRAINING, nicht darüber. Flockes
+       Ansage. Und sie ist richtig: morgens will man wissen, was heute ansteht —
+       ein Hinweis auf den Wochenschnitt VOR der Trainingskarte schiebt die
+       Antwort auf die eigentliche Frage nach unten. Wer die Karte gelesen hat,
+       ist ohnehin dabei zu scrollen.
+
+       Untereinander nach Takt: der Monat kommt einmal im Monat und ist damit
+       das Seltenere, der Wochenschnitt jede Woche. */
+    monthReviewCard(state, today),
+    weekMacrosCard(state, today, navigate),
+
     weightCard(state, shownKey, store));
 }

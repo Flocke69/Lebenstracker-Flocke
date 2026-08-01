@@ -43,9 +43,10 @@
  *       Bildschirm nach der Pause, Abschließen fragt nach offenen Übungen
  *   v18 Review ohne Fragen: ein Urteil oben, vier Themenfenster mit Grafik
  *       darunter, Erinnerung an den Yazio-Wochenschnitt am Sonntag
+ *   v19 Die Erinnerungen stehen unter der Trainingskarte, nicht darueber
  */
 
-const CACHE_VERSION = 'v18';
+const CACHE_VERSION = 'v19';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
