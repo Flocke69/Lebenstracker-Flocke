@@ -23,12 +23,26 @@
   <link rel="stylesheet" href="css/tokens.css">
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/components.css">
+
+  <!-- Hell oder dunkel VOR dem ersten Bild setzen. Läuft das erst im Modul,
+       blitzt beim Start eine Zehntelsekunde die falsche Palette auf — auf
+       einem hellen Screen ist das ein schwarzer Blitz ins Gesicht.
+       Die Logik dazu steht in js/views/theme.js; hier nur der Vorgriff. -->
+  <script>
+    try {
+      var t = localStorage.getItem('lebenstracker.theme');
+    } catch (e) { /* privater Modus */ }
+    document.documentElement.dataset.theme = (t === 'light' || t === 'dark') ? t
+      : (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  </script>
 </head>
 <body>
   <div id="app" class="app app--onboarding">
-    <div class="view">
-      <p class="field__hint">Lädt …</p>
-    </div>
+    <main class="viewport">
+      <div class="view">
+        <p class="field__hint">Lädt …</p>
+      </div>
+    </main>
   </div>
 
   <noscript>

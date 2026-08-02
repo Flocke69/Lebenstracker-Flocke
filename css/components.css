@@ -12,32 +12,125 @@
    einen Chip, der dasselbe sagt.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ─── Gerüst ─────────────────────────────────────────────────────────────── */
+/* ─── Gerüst ─────────────────────────────────────────────────────────────────
+ *
+ * DIE APP IST EINE FESTE HÜLLE, GESCROLLT WIRD DARIN.
+ *
+ * Vorher scrollte das Dokument und die Tab-Bar klebte mit `position: sticky`
+ * am unteren Rand. Das geht nicht mehr: Leisten aus Glas müssen ÜBER dem
+ * Inhalt liegen und ihn durchscheinen lassen — dafür muss der Inhalt unter
+ * ihnen hindurchlaufen können, und das kann er nur, wenn er in einem eigenen
+ * Behälter scrollt.
+ *
+ * Zwei Folgen, die man wissen muss:
+ *   · js/app.js merkt sich beim Neuzeichnen `.viewport`.scrollTop, nicht mehr
+ *     window.scrollY.
+ *   · `.view` braucht oben und unten so viel Polsterung, wie die Leisten hoch
+ *     sind — sonst beginnt der Inhalt unter dem Glas.
+ */
 
 .app {
-  min-height: 100dvh;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  /* Der feste Verlauf, über den alles Glas seine Tiefe bekommt. Er scrollt
+     NICHT mit: bewegte sich der Hintergrund mit dem Inhalt, wäre das Glas
+     nur eine hellere Fläche. */
+  background: var(--backdrop);
+  background-attachment: local;
 }
 
-.app--onboarding {
-  grid-template-rows: 1fr;   /* keine Tab-Bar, bevor das Profil steht */
+.viewport {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
+
+/* Die Bildlaufleiste ist am Rechner ein grauer Balken quer durch das Glas.
+   Auf dem Gerät, für das die App gebaut ist, gibt es sie ohnehin nicht. */
+.viewport::-webkit-scrollbar { width: 0; height: 0; }
+.viewport { scrollbar-width: none; }
+
+.view {
+  padding: calc(var(--safe-top) + var(--topbar-h) + var(--space-3))
+           var(--space-4)
+           calc(var(--safe-bottom) + var(--tabbar-h) + var(--space-8));
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+
+/* Ohne Reiter — Onboarding und Monatsabschluss — fehlt unten die Leiste. */
+.app--onboarding .view {
+  padding-top: calc(var(--safe-top) + var(--space-6));
+  padding-bottom: calc(var(--safe-bottom) + var(--space-8));
+}
+
+/* ─── Kopfleiste: schwebendes Glas ──────────────────────────────────────────
+ *
+ * Sie nimmt dem Inhalt keinen Streifen weg, sondern liegt darüber. Die
+ * Glasfläche dahinter ist am Anfang unsichtbar (--edge: 0) und wird von
+ * js/app.js eingeblendet, sobald Inhalt darunter läuft.
+ */
 
 .topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  height: calc(var(--safe-top) + var(--topbar-h));
   display: flex;
-  align-items: baseline;
+  align-items: flex-end;
+  padding: 0 var(--space-4) var(--space-2);
+  /* Nur die Knöpfe darin sind anfassbar — der Rest lässt den Finger zum
+     Inhalt durch, der darunter scrollt. */
+  pointer-events: none;
+}
+
+/* Die Fläche liegt separat, damit nur SIE ein- und ausblendet und nicht die
+   Schrift mit. Die Maske unten lässt sie ins Nichts auslaufen: eine
+   Trennlinie wäre eine Behauptung von Kante, wo Material genügt. */
+.topbar__sheen {
+  position: absolute;
+  inset: 0;
+  background: var(--chrome);
+  backdrop-filter: var(--blur-chrome);
+  -webkit-backdrop-filter: var(--blur-chrome);
+  -webkit-mask-image: linear-gradient(180deg, #000 64%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 64%, transparent 100%);
+  opacity: var(--edge, 0);
+  will-change: opacity;
+}
+
+.topbar__row {
+  position: relative;
+  display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: calc(var(--safe-top) + var(--space-4)) var(--space-4) var(--space-3);
-  border-bottom: 1px solid var(--line-200);
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  pointer-events: auto;
+}
+
+.topbar__id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .topbar__title {
   font-family: var(--font-display);
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: 600;
-  line-height: var(--leading-tight);
+  line-height: 1.1;
+  letter-spacing: var(--track-tight);
   /* Ein Hauch Farbe im Titel — das Flutlicht über dem Platz. */
   background: linear-gradient(96deg, var(--chalk-100) 30%, var(--sodium-500));
   -webkit-background-clip: text;
@@ -46,7 +139,7 @@
 }
 
 .topbar__sub {
-  font-size: var(--text-xs);
+  font-size: 0.6875rem;
   color: var(--ink-muted);
   text-transform: uppercase;
   letter-spacing: var(--track-wide);
@@ -57,105 +150,161 @@
 .topbar__tools {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-}
-
-/* Profil und Archiv hängen an der Kopfzeile statt in der Tab-Bar: fünf Reiter
-   sind voll, und man ändert sein Geburtsjahr nicht täglich. */
-.topbar__link {
-  display: flex;
-  align-items: center;
   gap: var(--space-2);
-  /* 44 px ist die Untergrenze für eine Fingerkuppe. Darunter trifft man
-     daneben, und zwar besonders oft in der Kopfzeile, wo der Daumen weit
-     greifen muss. */
-  min-height: 44px;
-  padding: var(--space-1) var(--space-2);
-  background: none;
-  border-radius: var(--radius-sm);
+  flex: none;
 }
 
-.topbar__link:active {
-  background: var(--pitch-700);
-}
-
-.topbar__gear {
-  font-size: var(--text-md);
+/* Profil, Archiv und die Palette hängen an der Kopfzeile statt in der
+   Tab-Bar: fünf Reiter sind voll, und man ändert sein Geburtsjahr nicht
+   täglich. Runde Glasknöpfe, 40 px — darunter trifft der Daumen daneben,
+   und in der Kopfzeile muss er weit greifen. */
+.topbar__btn {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-edge);
+  border-radius: 50%;
+  box-shadow: inset 0 1px 0 var(--glass-lip);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: var(--ink-muted);
+  transition: transform var(--dur-press) var(--ease-out),
+              background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+
+/* Die Rückmeldung sitzt auf dem DRUCK, nicht auf dem Loslassen. Alles andere
+   fühlt sich tot an, egal wie schnell der Rest ist. */
+.topbar__btn:active {
+  transform: scale(0.9);
+  background: var(--glass);
+}
+
+.topbar__btn--active {
+  color: var(--accent);
+  border-color: var(--sodium-glow);
+}
+
+.topbar__glyph {
+  font-size: var(--text-md);
   line-height: 1;
 }
 
-.topbar__link--active .topbar__gear,
-.topbar__link--active .topbar__sub {
-  color: var(--ink);
-}
-
-.view {
-  padding: var(--space-4);
-  padding-bottom: var(--space-8);
-  width: 100%;
-  max-width: var(--content-max);
-  margin: 0 auto;
-}
-
-/* ─── Tab-Bar ────────────────────────────────────────────────────────────── */
+/* ─── Tab-Bar: eine schwebende Leiste, keine angeklebte Zeile ───────────────
+ *
+ * Rand ringsum, damit der Inhalt sichtbar DARUNTER durchläuft. Das macht aus
+ * dem unteren Bildrand eine Ebene statt eines Abschlusses.
+ */
 
 .tabbar {
-  position: sticky;
-  bottom: 0;
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: 1fr;
-  background: var(--pitch-800);
-  border-top: 1px solid var(--line-200);
-  padding-bottom: var(--safe-bottom);
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: calc(var(--safe-bottom) + var(--tabbar-gap));
+  z-index: 20;
+  display: flex;
+  padding: 5px;
+  max-width: calc(var(--content-max) - var(--space-4));
+  margin: 0 auto;
+  background: var(--chrome);
+  backdrop-filter: var(--blur-chrome);
+  -webkit-backdrop-filter: var(--blur-chrome);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-float), inset 0 1px 0 var(--glass-lip);
+}
+
+/* Die Kapsel GLEITET zum neuen Reiter — sie erscheint nicht neu. Deshalb ist
+   sie ein einzelnes Element hinter den Reitern und keine Klasse an jedem.
+   Bewegt wird sie von einer Feder in js/app.js, nicht von einer Transition:
+   nur so kann man sie mitten im Weg abfangen. */
+.tabbar__capsule {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  left: 5px;
+  width: 0;
+  border-radius: calc(var(--radius-xl) - 6px);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-lip);
+  transition: opacity var(--dur-fast) var(--ease);
+  will-change: transform, width;
 }
 
 .tab {
-  min-height: var(--tabbar-h);
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  min-height: calc(var(--tabbar-h) - 10px);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  border-radius: 0;
+  gap: 2px;
+  border-radius: calc(var(--radius-xl) - 6px);
+  background: none;
   color: var(--ink-muted);
-  font-size: var(--text-xs);
+  font-size: 0.6875rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  /* Der Strich oben ist die Markierung — die Kreidelinie am Spielfeldrand. */
-  box-shadow: inset 0 2px 0 0 transparent;
-}
-
-.tab:active {
-  background: var(--pitch-700);
-}
-
-.tab--active {
-  color: var(--ink);
-  box-shadow: inset 0 2px 0 0 var(--accent);
-}
-
-/* Das Glyph des aktiven Reiters glüht im Flutlichtton — dieselbe Sprache wie
-   die Kreidelinie darüber. */
-.tab--active .tab__glyph {
-  color: var(--accent);
+  letter-spacing: 0.01em;
+  transition: color var(--dur-med) var(--ease);
 }
 
 .tab__glyph {
   font-family: var(--font-display);
-  font-size: var(--text-md);
+  font-size: var(--text-lg);
   line-height: 1;
+  transition: transform var(--dur-press) var(--ease-out);
+}
+
+.tab:active .tab__glyph {
+  transform: scale(0.86);
+}
+
+.tab--active {
+  color: var(--accent);
+}
+
+.tab__label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ─── Karten ─────────────────────────────────────────────────────────────── */
 
+/* Eine Karte ist eine Scheibe, kein Kasten: durchscheinende Fläche, dünne
+   Materialkante, und oben ein Lichtstreifen, wie ihn eine echte Kante fängt.
+   KEINE Unschärfe — siehe die Begründung in css/tokens.css. */
 .card {
+  position: relative;
   background: var(--surface);
-  border: 1px solid var(--line-200);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-lg);
   padding: var(--space-4);
   margin-bottom: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+
+/* Der Lichtstreifen läuft an den Ecken aus, statt bis in sie hineinzulaufen —
+   sonst sieht er aus wie ein zweiter Rahmen. */
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--space-4);
+  right: var(--space-4);
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--glass-lip), transparent);
+  pointer-events: none;
 }
 
 .card:last-child {
@@ -202,7 +351,13 @@
   linear-gradient(180deg, var(--ok-fill), transparent 42%), var(--surface); }
 .card--bad { border-left-color: var(--bad-500); background:
   linear-gradient(180deg, var(--bad-fill), transparent 42%), var(--surface); }
-.card--idle { border-left-color: var(--line-300); }
+.card--idle { border-left-color: var(--glass-edge); }
+
+/* Die getönte Kante läuft in die Rundung — ohne das steht links ein gerader
+   Balken an einer runden Scheibe. */
+.card--tone::before {
+  left: var(--space-2);
+}
 
 /* Die drei Einheiten tragen je eine eigene Kante — man erkennt die Karte,
    bevor man den Namen liest. */
@@ -214,41 +369,60 @@
 /* ─── Wochenband — das Signature-Element, jetzt antippbar ────────────────── */
 
 .weekband {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
   margin-bottom: var(--space-3);
 }
 
+/* Die Kapsel GLEITET zum angetippten Tag — sie erscheint nicht neu. Bewegt
+   wird sie von einer Feder in js/views/today.js, damit man sie unterwegs
+   greifen und umlenken kann. */
+.weekband__capsule {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0;
+  border-radius: var(--radius-md);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-lip), var(--shadow-card);
+  z-index: 0;
+  will-change: transform, width;
+}
+
 .weekband__day {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
   /* 44 px Trefferfläche: das Band ist jetzt Navigation, keine Anzeige. */
-  min-height: 56px;
+  min-height: 58px;
   padding: var(--space-2) 0;
   background: none;
-  border-radius: var(--radius-sm);
-  /* Die Kreidelinie über jedem Tag ist die Spielfeldmarkierung. */
-  border-top: 2px solid var(--line-200);
+  border-radius: var(--radius-md);
   font-weight: 400;
+  transition: color var(--dur-med) var(--ease);
 }
 
-.weekband__day:active {
-  background: var(--pitch-700);
+.weekband__day:active .weekband__num {
+  transform: scale(0.88);
 }
 
-/* Heute ist orange markiert, der GEZEIGTE Tag ist gefüllt. Zwei verschiedene
-   Dinge, deshalb zwei verschiedene Markierungen — nach dem Blättern muss man
-   beides gleichzeitig sehen. */
-.weekband__day--today {
-  border-top-color: var(--accent);
-}
-
-.weekband__day--shown {
-  background: var(--pitch-700);
-  box-shadow: inset 0 0 0 1px var(--line-300);
+/* Heute trägt einen orangen Punkt unter der Zahl, der GEZEIGTE Tag die
+   Kapsel. Zwei verschiedene Dinge, deshalb zwei verschiedene Markierungen —
+   nach dem Blättern muss man beides gleichzeitig sehen. */
+.weekband__day--today .weekband__label::after {
+  content: '';
+  display: block;
+  width: 4px;
+  height: 4px;
+  margin: 2px auto 0;
+  border-radius: 50%;
+  background: var(--accent);
 }
 
 .weekband__label {
@@ -264,13 +438,27 @@
   line-height: 1;
   font-variant-numeric: tabular-nums;
   color: var(--chalk-500);
+  transition: transform var(--dur-press) var(--ease-out),
+              color var(--dur-med) var(--ease);
 }
 
-.weekband__day--today .weekband__label,
-.weekband__day--today .weekband__num,
+.weekband__day--today .weekband__num {
+  color: var(--accent);
+}
+
+/* Der gezeigte Tag steht in Kreide, HEUTE steht im Flutlichtton. Wer auf
+   Donnerstag geblättert hat, sieht dann beides gleichzeitig: wo er ist und
+   wo heute liegt. Die Regel für heute steht ABSICHTLICH danach — bei
+   gleicher Spezifität gewinnt die spätere, und am Tag, der beides ist,
+   soll die Farbe von heute gewinnen. */
 .weekband__day--shown .weekband__label,
 .weekband__day--shown .weekband__num {
   color: var(--ink);
+}
+
+.weekband__day--today .weekband__label,
+.weekband__day--today .weekband__num {
+  color: var(--accent);
 }
 
 /* Platz für die Markierung, damit die Zahlen aller Tage auf einer Linie
@@ -377,12 +565,13 @@
   color: var(--ink-muted);
   border: 1px solid var(--line-200);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--glass-strong);
 }
 
 .dayhead__step:active:not(:disabled) {
-  background: var(--pitch-700);
+  background: var(--glass);
   color: var(--ink);
+  transform: scale(0.92);
 }
 
 /* ─── Kennzahlen ─────────────────────────────────────────────────────────── */
@@ -554,12 +743,19 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   stroke-linecap: round;
 }
 
+/* KEINE Transition auf stroke-dasharray: die Länge gehört der Feder in
+   js/views/gauge.js. Eine Transition daneben würde gegen sie rechnen und bei
+   schnellen Antworten hinterherhinken. */
 .arc__fill {
   fill: none;
   stroke-width: 14;
   stroke-linecap: round;
-  transition: stroke-dasharray var(--dur-med) var(--ease);
+  transition: opacity var(--dur-fast) var(--ease);
 }
+
+/* Kein Leuchten per drop-shadow: der Bogen wird von der Feder in JEDEM Bild
+   neu gezeichnet, und ein Filter über einer 14 px breiten Linie kostet auf
+   dem iPhone genau dort Bilder pro Sekunde, wo die Bewegung sichtbar ist. */
 
 .arc__fill--good { stroke: var(--good-500); }
 .arc__fill--ok { stroke: var(--ok-500); }
@@ -758,50 +954,58 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   display: none;
 }
 
+/* Die Verdunkelung folgt der Fensterposition (--sheet-open kommt aus
+   js/views/sheet.js). Sie blendet nicht separat ein: zieht man das Fenster
+   halb zu, ist der Hintergrund halb hell — sonst wären es zwei Bewegungen,
+   die auseinanderlaufen. */
 .sheet::backdrop {
   background: var(--scrim);
+  opacity: var(--sheet-open, 0);
 }
 
 /* Das sichtbare Fenster. Hoch genug, dass man nichts hochziehen MUSS — der
    Griffbalken ist ein Angebot, keine Voraussetzung. */
+/* Das Fenster ist eine Glasscheibe, die von unten hereinkommt.
+ *
+ * KEINE ANIMATION, KEINE TRANSITION auf transform: die Position gehört der
+ * Feder in js/views/sheet.js. Eine Transition daneben würde gegen sie
+ * arbeiten, und beim Ziehen könnte man das Fenster nicht 1:1 halten.
+ *
+ * Die alte Sorge bleibt gültig — eine Bewegung, die nicht läuft, darf das
+ * Fenster nicht unsichtbar lassen. Die Antwort darauf steht jetzt im
+ * JavaScript: dort sitzt eine Reißleine, die es nach 700 ms hart an seinen
+ * Platz setzt. */
 .sheet__panel {
   width: 100%;
   max-width: var(--content-max);
   height: 88%;
   display: flex;
   flex-direction: column;
-  background: var(--pitch-800);
-  border-top: 3px solid var(--line-300);
+  background: color-mix(in srgb, var(--pitch-800) 76%, transparent);
+  backdrop-filter: var(--blur-sheet);
+  -webkit-backdrop-filter: var(--blur-sheet);
+  border: 1px solid var(--glass-edge);
+  border-top: 3px solid var(--glass-edge);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
-  box-shadow: var(--shadow-sheet);
+  box-shadow: var(--shadow-sheet), inset 0 1px 0 var(--glass-lip);
   overflow: hidden;
-  transition: transform var(--dur-fast) var(--ease), height var(--dur-med) var(--ease);
+  transition: height var(--dur-med) var(--ease);
   /* Der Zug am Griffbalken soll nicht gleichzeitig die Seite scrollen. */
   touch-action: none;
+  will-change: transform;
+}
 
-  /* DIE EINBLENDBEWEGUNG DARF DIE POSITION NICHT TRAGEN.
-     Hier stand `from { transform: translateY(100%) }` — eine ganze Fensterhöhe.
-     Läuft die Animation nicht (Tab im Hintergrund, Energiesparmodus, gedrosselte
-     Zeitgeber), bleibt das Fenster auf dem Startbild stehen: komplett unterhalb
-     des Bildschirms. Genau so ist es beim Prüfen der Live-Fassung passiert.
-     Jetzt sind es 14 px. Bleibt die Bewegung stecken, sitzt das Fenster 14 px
-     zu tief — das sieht niemand. Die Ruhelage ist immer die sichtbare. */
-  animation: sheet-in var(--dur-med) var(--ease);
+/* Ohne Durchsichtigkeit wird das Glas milchig statt durchsichtig — sonst
+   stünde hier eine halbdurchsichtige Fläche ohne Unschärfe, und darunter
+   wäre der Text der App zu lesen. */
+@media (prefers-reduced-transparency: reduce) {
+  .sheet__panel { background: var(--pitch-800); }
 }
 
 /* Nach oben gezogen oder Griffbalken angetippt: ganze Höhe. */
 .sheet--full .sheet__panel {
   height: 100%;
   border-radius: 0;
-}
-
-@keyframes sheet-in {
-  from { transform: translateY(14px); }
-  to { transform: translateY(0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sheet__panel { animation: none; }
 }
 
 .sheet--good .sheet__panel { border-top-color: var(--good-500); }
@@ -826,7 +1030,6 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 
 .sheet__grip:active {
   cursor: grabbing;
-  background: var(--pitch-700);
 }
 
 .sheet__grip-bar {
@@ -847,7 +1050,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-1) var(--space-4) var(--space-3);
-  border-bottom: 1px solid var(--line-200);
+  border-bottom: 1px solid var(--glass-edge);
   flex: none;
   /* Auch die Kopfzeile zieht — wie bei jedem Sheet, das man kennt. */
   cursor: grab;
@@ -875,7 +1078,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 }
 
 .sheet__close:active {
-  background: var(--pitch-700);
+  background: var(--glass-strong);
   color: var(--ink);
 }
 
@@ -883,9 +1086,12 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
    für den Zug abgeschaltet hat — sonst ließe sich der Inhalt nicht scrollen.
    `overscroll-behavior: contain` verhindert, dass die Seite dahinter
    mitwandert, wenn man am Ende der Liste weiterzieht. */
+.sheet__body::-webkit-scrollbar { width: 0; height: 0; }
+
 .sheet__body {
   padding: var(--space-4);
   overflow-y: auto;
+  scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   touch-action: pan-y;
@@ -897,8 +1103,10 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
    Körper lang ist. Der Home-Indicator des iPhones wird eingerechnet. */
 .sheet__foot {
   padding: var(--space-3) var(--space-4) calc(var(--safe-bottom) + var(--space-4));
-  border-top: 1px solid var(--line-200);
-  background: var(--pitch-800);
+  border-top: 1px solid var(--glass-edge);
+  background: var(--chrome);
+  backdrop-filter: var(--blur-chrome);
+  -webkit-backdrop-filter: var(--blur-chrome);
   flex: none;
   display: flex;
   flex-direction: column;
@@ -963,10 +1171,11 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
    Charts. Die Farbkante links trägt dieselbe Statusfarbe wie überall. */
 .panel {
   background: var(--surface);
-  border: 1px solid var(--line-200);
+  border: 1px solid var(--glass-edge);
   border-left-width: 3px;
-  border-left-color: var(--line-300);
-  border-radius: var(--radius-md);
+  border-left-color: var(--glass-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
   margin-bottom: var(--space-3);
   overflow: hidden;
 }
@@ -1047,8 +1256,8 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 
 /* Aufklappbereich */
 .reveal {
-  border: 1px solid var(--line-200);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--radius-lg);
   background: var(--surface);
   margin-bottom: var(--space-4);
 }
@@ -1274,8 +1483,10 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   grid-template-columns: repeat(3, 1fr);
   margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) var(--space-4);
   padding: var(--space-2) var(--space-3) var(--space-3);
-  background: var(--pitch-800);
-  border-bottom: 1px solid var(--line-200);
+  background: var(--chrome);
+  backdrop-filter: var(--blur-chrome);
+  -webkit-backdrop-filter: var(--blur-chrome);
+  border-bottom: 1px solid var(--glass-edge);
 }
 
 .session-bar__cell {
@@ -1302,7 +1513,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 }
 
 .session-bar__cell--tap:active {
-  background: var(--pitch-700);
+  background: var(--glass-strong);
 }
 
 .session-bar__value {
@@ -1679,7 +1890,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 }
 
 .exercise {
-  background: var(--pitch-700);
+  background: var(--glass-strong);
   border: 1px solid var(--line-200);
   border-radius: var(--radius-md);
   padding: var(--space-4);
@@ -1990,7 +2201,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-3);
-  background: var(--pitch-700);
+  background: var(--glass-strong);
   border-radius: var(--radius-md);
   border-left: 3px solid var(--good-edge);
 }
@@ -2037,7 +2248,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: var(--pitch-700);
+  background: var(--glass-strong);
   color: var(--sodium-500);
   font-family: var(--font-display);
   font-size: var(--text-sm);
@@ -2081,7 +2292,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   border-left: 3px solid var(--line-300);
-  background: var(--pitch-700);
+  background: var(--glass-strong);
 }
 
 .judge__row--good { border-left-color: var(--good-500); }
@@ -2457,7 +2668,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   gap: 1px;
   padding: var(--space-3) var(--space-2);
   border-radius: var(--radius-md);
-  background: var(--pitch-700);
+  background: var(--glass-strong);
   border-top: 3px solid var(--line-300);
 }
 
@@ -2513,7 +2724,7 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 .verdictbox {
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  background: var(--pitch-700);
+  background: var(--glass-strong);
   border-left: 3px solid var(--line-300);
 }
 
@@ -2653,8 +2864,10 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 .chip {
   display: inline-block;
   padding: 3px var(--space-3);
-  border: 1px solid var(--line-300);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-pill);
+  color: var(--ink-muted);
   font-size: var(--text-xs);
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -2681,30 +2894,45 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5);
-  background: var(--pitch-700);
+  background: var(--glass-strong);
   color: var(--ink);
-  border: 1px solid var(--line-200);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-lip);
+  /* Der Druck ist das Wichtigste am Knopf: er muss beim AUFSETZEN kommen,
+     nicht beim Loslassen. Deshalb eine sehr kurze Zeit und keine Verzögerung
+     irgendwo im Weg. */
+  transition: transform var(--dur-press) var(--ease-out),
+              background var(--dur-fast) var(--ease),
+              opacity var(--dur-fast) var(--ease);
 }
 
 .btn:active {
-  background: var(--pitch-600);
+  transform: scale(0.975);
+  background: var(--glass);
 }
 
 .btn--primary {
   background: var(--sodium-500);
-  color: var(--pitch-900);
-  border-color: var(--sodium-500);
+  color: var(--accent-ink);
+  border-color: transparent;
+  box-shadow: 0 6px 20px var(--sodium-glow);
   font-weight: 600;
 }
 
 .btn--primary:active {
-  opacity: 0.85;
+  transform: scale(0.975);
+  opacity: 0.88;
 }
 
 .btn--ghost {
   background: none;
-  border-color: var(--line-200);
+  border-color: transparent;
+  box-shadow: none;
   color: var(--ink-muted);
+}
+
+.btn--ghost:active {
+  background: var(--glass);
 }
 
 .btn--block {
@@ -2753,9 +2981,9 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   grid-auto-columns: 1fr;
   gap: 2px;
   background: var(--pitch-700);
-  border: 1px solid var(--line-200);
+  border: 1px solid var(--glass-edge);
   border-radius: var(--radius-md);
-  padding: 2px;
+  padding: 3px;
 }
 
 .seg--wrap {
@@ -2777,13 +3005,15 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   align-items: center;
   justify-content: center;
   min-height: 42px;
-  border-radius: calc(var(--radius-md) - 3px);
+  border-radius: calc(var(--radius-md) - 4px);
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--ink-muted);
   cursor: pointer;
   text-align: center;
-  transition: background var(--dur-fast) var(--ease);
+  transition: background var(--dur-med) var(--ease),
+              color var(--dur-fast) var(--ease),
+              transform var(--dur-press) var(--ease-out);
   /* Ohne das drückt ein langes Wort die Leiste über den Bildrand hinaus:
      Grid-Spalten haben eine Mindestbreite vom Inhalt, nicht von 1fr. */
   min-width: 0;
@@ -2802,9 +3032,22 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
   cursor: pointer;
 }
 
+/* Die gewählte Stufe ist eine Glaskapsel, keine weiße Fläche: sie liegt AUF
+   der Rille, statt sie auszustanzen. Der Druck sitzt auf dem Aufsetzen —
+   das ist die Rückmeldung, die beim Check-in im Bett zählt. */
+.seg__opt:active {
+  transform: scale(0.95);
+}
+
 .seg__opt:has(input:checked) {
-  background: var(--chalk-100);
-  color: var(--pitch-900);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-edge);
+  box-shadow: inset 0 1px 0 var(--glass-lip), 0 2px 8px rgba(0, 0, 0, 0.18);
+  color: var(--ink);
+}
+
+[data-theme='light'] .seg__opt:has(input:checked) {
+  box-shadow: inset 0 1px 0 var(--glass-lip), 0 2px 8px rgba(24, 44, 32, 0.12);
 }
 
 .seg__opt:has(input:focus-visible) {
@@ -2830,9 +3073,10 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
 
 .notice {
   padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--line-200);
-  background: var(--pitch-800);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--glass-edge);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
   font-size: var(--text-sm);
   margin-bottom: var(--space-4);
 }
@@ -2841,17 +3085,17 @@ td.is-bad { color: var(--bad-500); font-weight: 600; }
    die Farbe. */
 .notice--warn {
   border-left: 3px solid var(--ok-500);
-  background: linear-gradient(180deg, var(--ok-fill), transparent 60%), var(--pitch-800);
+  background: linear-gradient(180deg, var(--ok-fill), transparent 60%), var(--surface);
 }
 
 .notice--error {
   border-left: 3px solid var(--bad-500);
-  background: linear-gradient(180deg, var(--bad-fill), transparent 60%), var(--pitch-800);
+  background: linear-gradient(180deg, var(--bad-fill), transparent 60%), var(--surface);
 }
 
 .notice--good {
   border-left: 3px solid var(--good-500);
-  background: linear-gradient(180deg, var(--good-fill), transparent 60%), var(--pitch-800);
+  background: linear-gradient(180deg, var(--good-fill), transparent 60%), var(--surface);
 }
 
 .notice__title {

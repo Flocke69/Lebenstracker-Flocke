@@ -111,7 +111,11 @@ http://localhost:8080/tests.html
 
 Getestet werden Mifflin-St Jeor und Makro-Verteilung, Bereitschafts-Score, Spieltags-Regeln,
 Volumenberechnung und der Trainingsplan gegen Flockes Vorgabe, das Verschieben von Trainingstagen,
-der Yazio-Wochenschnitt, das Review-Regelwerk samt Monats-Datensatz und der Monats-Rollover.
+der Yazio-Wochenschnitt, das Review-Regelwerk samt Monats-Datensatz und der Monats-Rollover — und
+seit dem Umbau auf „Flutlicht Glas" auch die Bewegung: dass die Feder ankommt und bei Dämpfung 1
+nicht überschwingt, dass die Impulsprojektion linear ist und die Richtung behält, dass das Gummiband
+gegen eine Grenze läuft statt ins Unendliche, und dass die Zeigergeschwindigkeit alte Punkte
+ignoriert.
 
 ## Auf dem Handy installieren
 
@@ -156,7 +160,10 @@ tests.html            Test-Runner
 sw.js                 Service Worker (Offline-Cache)
 css/                  tokens.css · base.css · components.css
 js/lib/               reine Rechenlogik, DOM-frei, getestet
+  motion.js           Feder, Impulsprojektion, Gummiband — die drei Formeln
 js/views/             Rendering pro Screen
+  motion.js           Feder und Zeigerverfolgung (braucht Bildtakt und Zeiger)
+  theme.js            hell oder dunkel, gemerkt
   sheet.js            Overlay-Fenster (liegt außerhalb von #app)
   clock.js            ein Sekundentakt für Trainingsuhr und Satzpause
   gauge.js            Statusgrafik, die die Punktzahl ersetzt
@@ -186,6 +193,23 @@ werfen, und ohne Capture verliert der Zug seinen Empfänger, sobald der Finger d
 was er beim Ziehen sofort tut. Das Fenster steht ohnehin auf 88 % Höhe, der Griff ist ein Angebot
 und keine Voraussetzung.
 
+Entschieden wird beim Loslassen nach der **projizierten** Endposition, nicht nach der gemessenen:
+ein kurzer schneller Wisch nach unten schließt deshalb auch dann, wenn er nur 30 px weit ging. Und
+die Fingergeschwindigkeit wird an die Feder übergeben, statt verworfen zu werden — sonst gäbe es
+genau dort eine sichtbare Naht zwischen Ziehen und Animieren.
+
+**Position und Ruhelage sind zwei Paar Schuhe.** Früher trug die Einblend-Animation bewusst nur
+14 px, damit ein ausgefallener Lauf das Fenster nicht unsichtbar unterhalb des Bildschirms
+stehen lässt. Jetzt trägt die Feder die volle Höhe — dafür sitzt in `sheet.js` eine Reißleine:
+läuft sie nach 700 ms immer noch nicht, wird das Fenster hart an seinen Platz gesetzt. Die Ruhelage
+ist immer die sichtbare.
+
+**Gleitende Kapseln leben im Modul, nicht in der Ansicht.** Tab-Bar und Wochenband markieren ihre
+Auswahl mit einem einzelnen Element, das mit einer Feder wandert. Die Feder steht im Modulkopf von
+`js/app.js` beziehungsweise `js/views/today.js`: entstünde sie beim Zeichnen, wäre sie nach jedem
+Tastendruck wieder am Anfang. Bewegt wird nur bei einem echten Wechsel — beim bloßen Neuzeichnen
+wird ohne Bewegung gesetzt.
+
 **Trainingsuhr und Satzpause zeichnen nicht neu.** Sie schreiben über `js/views/clock.js` direkt in
 einen Textknoten. Einmal pro Sekunde die Ansicht neu zu zeichnen würde im Trainingsfenster die
 Tastatur wegwerfen und den Fokus verlieren. Die Ticker melden sich selbst ab, sobald ihr Knoten
@@ -203,7 +227,7 @@ Eingabe zu, mit einer pauschalen „alle wieder öffnen"-Regel gehen dagegen all
 
 ## Design
 
-Richtung **„Flutlicht bei Nacht"**: der Platz bleibt dunkel — grünstichiges Schwarz, kreideweiße
+Richtung **„Flutlicht Glas"**: der Platz bleibt dunkel — grünstichiges Schwarz, kreideweiße
 Haarlinien wie Spielfeldmarkierungen. Darüber liegt ein volles Farbsystem: drei Statusfarben
 (gut / geht so / schlecht) und sechs kategoriale Datenfarben, je eine pro Messgröße. Gewicht ist
 überall blau, Schlaf überall violett.
@@ -216,10 +240,56 @@ Was geblieben ist: **jeder Status trägt immer zusätzlich ein Wort.** Farbe bes
 Erkennen, sie trägt die Information nicht allein. Und Schwellen in Charts bleiben Referenzlinien,
 keine Farbwechsel der Marke — Position funktioniert bei jeder Farbfehlsichtigkeit.
 
-Die Palette ist nachgerechnet, nicht geschätzt: `python3 tools/check_contrast.py` prüft WCAG-Kontrast
-und den OKLab-Abstand aller Paare, die nebeneinander Bedeutung tragen — auch simuliert für
-Protanopie, Deuteranopie und Tritanopie. Jede Änderung an den Farbwerten erfordert einen erneuten
-Durchlauf. Details in `docs/superpowers/specs/`.
+### Material
+
+Kopfzeile, Tab-Bar und Fenster **schweben** über dem Inhalt, statt ihm einen Streifen wegzunehmen:
+durchscheinendes Glas mit Unschärfe, unter dem der Inhalt hindurchläuft. Die Glasfläche der
+Kopfzeile ist zunächst unsichtbar und wird eingeblendet, sobald etwas darunter liegt — eine Kante,
+die entsteht, statt einer Trennlinie, die immer da ist.
+
+Dafür ist die App eine **feste Hülle mit eigenem Scrollbehälter** (`.app` / `.viewport`). Gescrollt
+wird nicht mehr das Dokument; `js/app.js` merkt sich beim Neuzeichnen deshalb `.viewport.scrollTop`
+und nicht `window.scrollY`.
+
+**Glas trägt nur die Leisten, nicht jede Karte.** Karten bekommen die durchscheinende Fläche und
+die Lichtkante oben, aber keine Unschärfe: auf dem Trends-Screen stehen ein Dutzend Karten
+übereinander, und ein Dutzend Unschärfeflächen kosten auf dem iPhone sichtbar Bilder pro Sekunde.
+Über dem festen Verlauf im Hintergrund sieht man den Unterschied nicht.
+
+### Bewegung
+
+Was der Finger anfassen kann, läuft über eine **Feder** (`js/lib/motion.js`, `js/views/motion.js`),
+nicht über eine CSS-Transition. Der Unterschied ist nicht Geschmack: eine Transition rechnet stur
+zum Ziel und beginnt nach einem Abbruch wieder mit Geschwindigkeit null — das ist die Mauer, gegen
+die man beim Umkehren einer Bewegung läuft. Eine Feder hat einen Zielwert plus Ort *und*
+Geschwindigkeit; ein neues Ziel ändert nur den Zielwert.
+
+Zwei Regler statt drei, wie in Apples Werkzeugkasten: **Dämpfung** (1,0 = kein Überschwingen) und
+**Antwortzeit** in Sekunden — keine Dauer, die gibt es bei einer Feder nicht. Nachwippen bekommt
+nur, was aus einer Geste mit Schwung kommt.
+
+Daran hängen: das Fenster (1:1 am Finger, Gummiband nach oben, beim Loslassen entscheidet die
+**projizierte** Endposition und nicht die gemessene), die gleitenden Kapseln in Tab-Bar und
+Wochenband, und der Füllstand des Bereitschaftsbogens.
+
+Die drei Formeln dahinter sind DOM-frei und getestet (`tests/motion.test.js`) — an ihnen entscheidet
+sich das ganze Gefühl der App, und Formeln prüft man mit Zahlen, nicht mit dem Auge.
+
+### Hell und dunkel
+
+Die App kann beides. Voreinstellung ist das, was das Gerät sagt; der Knopf oben links überstimmt
+das dauerhaft (eigener `localStorage`-Schlüssel, gehört nicht in den Monatsexport). Die helle
+Palette ist **kein invertiertes Dunkel**, sondern ein eigener Satz Werte: ein Grün mit 12:1 auf
+Schwarz hat auf Weiß 1,6:1.
+
+Die Palette ist nachgerechnet, nicht geschätzt: `python3 tools/check_contrast.py` prüft **beide
+Paletten** auf WCAG-Kontrast und den OKLab-Abstand aller Paare, die nebeneinander Bedeutung tragen —
+auch simuliert für Protanopie, Deuteranopie und Tritanopie. Jede Änderung an den Farbwerten
+erfordert einen erneuten Durchlauf. Details in `docs/superpowers/specs/`.
+
+Dazu beachtet die App drei unabhängige Signale: `prefers-reduced-motion` (Federn springen auf den
+Zielwert), `prefers-reduced-transparency` (Glas wird milchig statt durchsichtig) und
+`prefers-contrast` (nahezu deckende Flächen mit definierter Kante).
 
 ## Lizenz
 

@@ -35,21 +35,87 @@
  */
 
 import { el, replace } from './dom.js';
+import { Spring, Tracker, project, rubberband, prefersReducedMotion } from './motion.js';
 
 /** Nur ein Fenster gleichzeitig. Zwei übereinander sind auf 375 px unbenutzbar. */
 let current = null;
 
-/** So weit muss nach unten gezogen werden, damit das Fenster schließt. */
-const CLOSE_DISTANCE = 90;
-
 /** Ab dieser Zugstrecke nach oben geht das Fenster auf ganze Höhe. */
 const EXPAND_DISTANCE = 24;
 
-/** Dauer der Schließbewegung. Muss zur CSS-Transition passen. */
-const CLOSE_MS = 180;
+/**
+ * Anteil der Fensterhöhe, ab dem die PROJIZIERTE Endposition schließt.
+ *
+ * Projiziert, nicht gemessen: entschieden wird, wohin die Bewegung zeigt, nicht
+ * wo der Finger losgelassen hat. Ein kurzer, schneller Wisch nach unten schließt
+ * deshalb, auch wenn er nur 30 px weit ging.
+ */
+const CLOSE_FRACTION = 0.38;
 
-const reducedMotion = () =>
-  globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
+/** Ab dieser Geschwindigkeit schließt es in jedem Fall — ein Wegwerfen. */
+const CLOSE_VELOCITY = 900;
+
+/**
+ * Das Fenster steuern: Position, Unschärfe, Verdunkelung und der
+ * zurücktretende Hintergrund hängen alle an EINEM Wert.
+ *
+ * Der Wert ist die Verschiebung nach unten in Pixeln: 0 heißt offen, Höhe des
+ * Fensters heißt zu. Alles andere wird daraus abgeleitet — deshalb passen
+ * Verdunkelung, Unschärfe und Maßstab in jedem Bild zusammen, auch wenn man
+ * das Fenster mitten in der Bewegung greift und zurückzieht.
+ */
+function makeMotion(panel, dialog) {
+  const app = document.getElementById('app');
+  const height = () => panel.offsetHeight || 1;
+
+  const paint = (y) => {
+    const p = Math.max(0, Math.min(1, 1 - y / height()));   // 0 zu … 1 offen
+
+    panel.style.transform = `translate3d(0, ${y.toFixed(2)}px, 0)`;
+
+    /* Unschärfe und Maßstab laufen GEMEINSAM hoch. Eine Glasfläche, die nur
+       eingeblendet wird, sieht aus wie ein Bild; eine, deren Unschärfe
+       mitwächst, kommt an wie Material. */
+    const blur = (10 + 22 * p).toFixed(1);
+    panel.style.backdropFilter = `blur(${blur}px) saturate(180%)`;
+    panel.style.webkitBackdropFilter = panel.style.backdropFilter;
+
+    dialog.style.setProperty('--sheet-open', p.toFixed(3));
+
+    /* Der Hintergrund tritt ZURÜCK, statt zu verschwinden: die App bleibt
+       sichtbar, sie rückt nur eine Ebene nach hinten. Das geht nur, weil
+       #app eine feste, bildschirmgroße Hülle ist — bei einem scrollenden
+       Dokument würde das Skalieren den Inhalt verschieben. */
+    if (app) {
+      app.style.transform = p > 0.001
+        ? `scale(${(1 - 0.04 * p).toFixed(4)}) translateY(${(-6 * p).toFixed(1)}px)`
+        : '';
+      app.style.borderRadius = p > 0.001 ? `${(20 * p).toFixed(0)}px` : '';
+      app.style.overflow = p > 0.001 ? 'hidden' : '';
+    }
+  };
+
+  const spring = new Spring(0, {
+    damping: 0.86,          // ein Hauch Nachwippen: das Fenster wird geworfen
+    response: 0.34,
+    epsilon: 0.4,
+    onChange: paint,
+  });
+
+  /* Aufräumen heißt: die App bekommt ihre eigenen Maße zurück.
+     NICHT paint(0) — null ist die Position des OFFENEN Fensters, und die App
+     bliebe klein und rund stehen. Die Stile werden gelöscht, nicht auf einen
+     Wert gesetzt: was nicht mehr im Stilattribut steht, kann auch nicht mehr
+     falsch sein. */
+  const resetApp = () => {
+    if (!app) return;
+    app.style.transform = '';
+    app.style.borderRadius = '';
+    app.style.overflow = '';
+  };
+
+  return { spring, height, paint, resetApp };
+}
 
 /**
  * Griffbalken und Kopfzeile zum Ziehen einrichten.
@@ -66,59 +132,77 @@ const reducedMotion = () =>
  *
  * @returns {Function} Aufräumfunktion
  */
-function makeDraggable({ handles, panel, dialog, onClose }) {
-  let startY = null;
-  let moved = 0;
-
-  const setOffset = (px) => {
-    panel.style.transform = px > 0 ? `translateY(${px}px)` : '';
-  };
+function makeDraggable({ handles, dialog, motion, onClose }) {
+  const { spring, height } = motion;
+  const track = new Tracker();
+  let dragging = false;
+  let startY = 0;
+  let base = 0;
 
   const stop = () => {
-    startY = null;
-    panel.style.transition = '';
+    dragging = false;
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onUp);
     window.removeEventListener('pointercancel', onCancel);
   };
 
   function onMove(event) {
-    if (startY === null) return;
+    if (!dragging) return;
+    track.push(event.clientY);
     const dy = event.clientY - startY;
-    moved = dy;
+    let y = base + dy;
 
-    if (dy > 0) {
-      setOffset(dy);
-      return;
+    if (y < 0) {
+      /* Nach oben ist Schluss — aber nicht hart. Solange das Fenster noch
+         nicht auf ganzer Höhe steht, ist der Zug nach oben die Geste, die es
+         aufzieht; danach federt es. */
+      if (!dialog.classList.contains('sheet--full') && dy < -EXPAND_DISTANCE) {
+        dialog.classList.add('sheet--full');
+        base = 0;
+        startY = event.clientY;
+        y = 0;
+      } else {
+        y = -rubberband(-y, height());
+      }
     }
-    /* Nach oben: das Fenster geht auf ganze Höhe, statt sich vom Bildrand
-       wegzuschieben. Genau das war Flockes Beschwerde — hochziehen ging nicht. */
-    if (dy < -EXPAND_DISTANCE) {
-      dialog.classList.add('sheet--full');
-      setOffset(0);
-    }
+    spring.set(y);
   }
 
   function onUp() {
-    if (startY === null) return;
-    const dy = moved;
+    if (!dragging) return;
     stop();
-    if (dy > CLOSE_DISTANCE) onClose();
-    else setOffset(0);
+
+    const velocity = track.velocity();
+    /* Wohin zeigt die Bewegung? Nicht: wo wurde losgelassen. */
+    const projected = spring.x + project(velocity);
+
+    if (projected > height() * CLOSE_FRACTION || velocity > CLOSE_VELOCITY) {
+      onClose(velocity);
+      return;
+    }
+    /* Zurück an den Platz — MIT der Geschwindigkeit des Fingers. Ohne die
+       Übergabe gäbe es genau hier die sichtbare Naht zwischen Ziehen und
+       Animieren. */
+    spring.to(0, velocity);
   }
 
   function onCancel() {
-    if (startY === null) return;
+    if (!dragging) return;
     stop();
-    setOffset(0);
+    spring.to(0);
   }
 
   const onDown = (event) => {
     // Nur der primäre Zeiger, und nicht mitten in einer laufenden Bewegung.
-    if (startY !== null || event.button !== 0) return;
+    if (dragging || event.button !== 0) return;
+    dragging = true;
     startY = event.clientY;
-    moved = 0;
-    panel.style.transition = 'none';
+    /* Vom AKTUELLEN Stand weiter, nicht von null: greift man das Fenster
+       mitten im Schließen, folgt es sofort dem Finger, statt zu springen. */
+    spring.stop();
+    base = spring.x;
+    track.reset();
+    track.push(event.clientY);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointercancel', onCancel);
@@ -247,16 +331,40 @@ export function openSheet({
 
   // Antippen des Griffbalkens schaltet die Höhe um.
   grip.addEventListener('click', () => dialog.classList.toggle('sheet--full'));
+
+  const motion = makeMotion(panel, dialog);
   const stopDragging = makeDraggable({
-    handles: [grip, head], panel, dialog, onClose: () => closeSheet(),
+    handles: [grip, head],
+    dialog,
+    motion,
+    onClose: (velocity) => closeSheet({ velocity }),
   });
 
-  current = { dialog, panel, unsubscribe, onClose, stopDragging };
+  current = { dialog, panel, unsubscribe, onClose, stopDragging, motion };
 
   if (typeof dialog.showModal === 'function') dialog.showModal();
   else dialog.setAttribute('open', '');   // sehr alte Browser: wenigstens sichtbar
 
   document.documentElement.classList.add('has-sheet');
+
+  /* HEREINKOMMEN: von ganz unten auf null. Die Feder trägt hier ausnahmsweise
+     die volle Höhe — anders als die alte Einblend-Animation, die bewusst nur
+     14 px trug, damit ein ausgefallener Lauf das Fenster nicht unsichtbar
+     lässt.
+     Diese Sorge bleibt berechtigt, deshalb steht darunter die Reißleine: läuft
+     die Feder nach 700 ms immer noch nicht (gedrosselte Zeitgeber, Tab im
+     Hintergrund), wird das Fenster hart an seinen Platz gesetzt. Die Ruhelage
+     ist immer die sichtbare. */
+  const startHeight = panel.offsetHeight || window.innerHeight;
+  motion.spring.set(startHeight);
+  motion.spring.to(0);
+
+  setTimeout(() => {
+    if (current?.dialog === dialog && motion.spring.x > startHeight * 0.5) {
+      motion.spring.set(0);
+    }
+  }, 700);
+
   return { close: closeSheet, redraw: draw, expand: () => dialog.classList.add('sheet--full') };
 }
 
@@ -267,9 +375,9 @@ export function openSheet({
  * das Element verschwindet erst nach der Bewegung. Andersherum würde eine
  * Eingabe während des Ausblendens noch in einen sterbenden Baum schreiben.
  */
-export function closeSheet({ instant = false } = {}) {
+export function closeSheet({ instant = false, velocity } = {}) {
   if (!current) return;
-  const { dialog, panel, unsubscribe, onClose, stopDragging } = current;
+  const { dialog, panel, unsubscribe, onClose, stopDragging, motion } = current;
   current = null;
 
   unsubscribe();
@@ -278,7 +386,17 @@ export function closeSheet({ instant = false } = {}) {
   stopDragging();
   document.documentElement.classList.remove('has-sheet');
 
+  /* Zwei Wege führen zum Entfernen — die Feder und die Reißleine darunter.
+     Ohne diesen Riegel liefe onClose zweimal, und onClose kann etwas tun,
+     das nicht zweimal passieren darf. */
+  let removed = false;
   const remove = () => {
+    if (removed) return;
+    removed = true;
+
+    /* Den zurückgetretenen Hintergrund zurückholen, BEVOR das Fenster
+       verschwindet — sonst bliebe die App klein und rund stehen. */
+    motion.resetApp();
     try {
       if (dialog.open && typeof dialog.close === 'function') dialog.close();
     } catch { /* schon zu */ }
@@ -286,13 +404,20 @@ export function closeSheet({ instant = false } = {}) {
     if (onClose) onClose();
   };
 
-  if (instant || reducedMotion()) {
+  if (instant || prefersReducedMotion()) {
     remove();
     return;
   }
 
-  // Nach unten rausschieben, dann entfernen.
-  panel.style.transition = `transform ${CLOSE_MS}ms var(--ease, ease)`;
-  panel.style.transform = 'translateY(100%)';
-  setTimeout(remove, CLOSE_MS);
+  /* Nach unten hinausgleiten — mit der Geschwindigkeit, mit der es geworfen
+     wurde. `onRest` statt eines Zeitgebers: die Feder hat keine Dauer, an der
+     man einen Zeitgeber ausrichten könnte. */
+  motion.spring.onRest = remove;
+  motion.spring.to(motion.height(), velocity);
+
+  /* Dieselbe Reißleine wie beim Öffnen: kommt die Feder nicht ans Ziel, darf
+     das Fenster trotzdem nicht liegen bleiben. */
+  setTimeout(() => {
+    if (dialog.isConnected) remove();
+  }, 900);
 }

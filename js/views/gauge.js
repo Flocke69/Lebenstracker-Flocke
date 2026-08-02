@@ -16,6 +16,7 @@
 
 import { CHECKIN_FIELDS, toneOfSub } from '../lib/readiness.js';
 import { el } from './dom.js';
+import { Spring } from './motion.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -42,6 +43,30 @@ function arcPath() {
   return `M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`;
 }
 
+/* Der Füllstand des Bogens ist der einzige Wert der App, der SICHTBAR
+   nachläuft: er wächst mit einer Feder auf seinen Stand, statt umzuspringen.
+   Das ist kein Schmuck — beim Check-in ändert sich der Bogen nach jeder
+   Antwort, und eine Bewegung sagt "das hat gerade DEINE Antwort bewirkt",
+   während ein Sprung nur ein anderes Bild zeigt.
+
+   Die Feder lebt im Modul, weil das Fenster seinen Körper bei jeder Antwort
+   neu baut. Sie schreibt in den Knoten, den sie zuletzt bekommen hat, und
+   hört auf, sobald der nicht mehr im Dokument hängt — dieselbe Regel wie
+   beim Sekundentakt in js/views/clock.js. */
+let arcNode = null;
+const arcFill = new Spring(0, {
+  damping: 1,
+  response: 0.5,
+  epsilon: 0.002,
+  onChange: (value) => {
+    if (!arcNode?.isConnected) return;
+    arcNode.setAttribute('stroke-dasharray', `${ARC_LENGTH * value} ${ARC_LENGTH}`);
+    /* Bei Füllung null ausblenden: eine runde Strichkappe malt sonst einen
+       Punkt ans Bogenende, und der sieht aus wie ein Messwert, der keiner ist. */
+    arcNode.style.opacity = value > 0.002 ? '1' : '0';
+  },
+});
+
 /**
  * Der Bogen mit Wort.
  *
@@ -49,7 +74,6 @@ function arcPath() {
  */
 export function readinessArc(readiness) {
   const d = readiness.display;
-  const filled = ARC_LENGTH * d.fill;
 
   const svg = svgEl('svg', {
     viewBox: `0 0 ${W} ${H}`,
@@ -60,14 +84,16 @@ export function readinessArc(readiness) {
 
   svg.append(svgEl('path', { d: arcPath(), class: 'arc__track' }));
 
-  if (filled > 0) {
-    svg.append(svgEl('path', {
-      d: arcPath(),
-      class: `arc__fill arc__fill--${d.tone}`,
-      // Erst die gefüllte Länge, dann der Rest als Lücke.
-      'stroke-dasharray': `${filled} ${ARC_LENGTH}`,
-    }));
-  }
+  /* Der gefüllte Bogen liegt IMMER im Baum, auch bei Füllung null — sonst
+     hätte die Feder nichts, worauf sie wachsen könnte. */
+  const fill = svgEl('path', {
+    d: arcPath(),
+    class: `arc__fill arc__fill--${d.tone}`,
+    'stroke-dasharray': `${ARC_LENGTH * arcFill.x} ${ARC_LENGTH}`,
+  });
+  svg.append(fill);
+  arcNode = fill;
+  arcFill.to(d.fill);
 
   return el('div', { class: `arc-wrap arc-wrap--${d.tone}` },
     svg,

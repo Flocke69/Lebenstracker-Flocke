@@ -1,23 +1,41 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Lebenstracker — Design-Tokens, Richtung "Flutlicht bei Nacht"
+   Lebenstracker — Design-Tokens, Richtung "Flutlicht Glas"
 
    Der Platz bleibt dunkel — grünstichiges Schwarz, kreideweiße Haarlinien wie
-   Spielfeldmarkierungen. Darüber liegt jetzt aber ein VOLLES Farbsystem: jeder
-   Zustand hat eine eigene Farbe, jede Messgröße einen eigenen Farbton.
+   Spielfeldmarkierungen, Natriumdampf als Signalfarbe. Darüber liegt jetzt ein
+   MATERIAL: durchscheinende Flächen mit einer hellen Oberkante, unter denen
+   der Inhalt hindurchläuft, statt undurchsichtiger Kästen, die ihn abschneiden.
 
-   Warum die Kehrtwende gegenüber dem ersten Entwurf: Flockes Vorgabe lautet
-   "man soll direkt erkennen, wenn was gut oder schlecht läuft". Ein
-   entsättigter Screen kann das nicht — die Abwesenheit von Farbe ist kein
-   Signal, das man aus dem Augenwinkel liest. Also drei klare Statusfarben und
-   sechs kategoriale Datenfarben.
+   Und die App kann jetzt HELL. Der Platz wird zum Tageslichtspiel: dieselbe
+   Struktur, dieselben Wörter, gedrehte Palette. Ein Trainingstracker wird auch
+   mittags auf dem Sportplatz aufgemacht, und dort ist ein schwarzer Screen
+   nicht dunkel, sondern spiegelnd.
 
-   Was BLEIBT: jeder Status trägt immer zusätzlich ein WORT. Farbe beschleunigt
-   das Erkennen, sie trägt die Information nicht allein. Und Schwellen in Charts
-   bleiben Referenzlinien, keine Farbwechsel der Marke.
+   ─── Drei Regeln zum Material ────────────────────────────────────────────────
 
-   Die Palette ist geprüft, nicht geschätzt:
+   1. GLAS TRÄGT NUR DIE LEISTEN, NICHT JEDE KARTE. Kopfzeile, Tab-Bar und
+      Fenster bekommen echte Unschärfe (backdrop-filter). Karten bekommen die
+      durchscheinende Fläche und die Lichtkante, aber KEINE Unschärfe: auf dem
+      Trends-Screen stehen ein Dutzend Karten übereinander, und ein Dutzend
+      Unschärfeflächen kosten auf dem iPhone sichtbar Bilder pro Sekunde. Über
+      dem festen Verlauf im Hintergrund sieht man den Unterschied nicht.
+
+   2. NIE HELLES GLAS AUF HELLEM GLAS. Zwei durchscheinende Flächen
+      übereinander sind nicht mehr lesbar. Deshalb gibt es --glass (Karte) und
+      --glass-strong (das, was auf einer Karte liegt) — und nichts darüber.
+
+   3. DIE LICHTKANTE IST OBEN. Eine Materialkante fängt Licht von oben; ein
+      Rahmen ringsum wäre wieder ein Kasten.
+
+   ─── Was NICHT angefasst wurde ───────────────────────────────────────────────
+
+   Die Statusfarben und die Messgrößenfarben. Sie sind nachgerechnet, nicht
+   geschätzt, und tragen die ganze Bedeutung der App:
+
        python3 tools/check_contrast.py
-   Jede Änderung an den Farbwerten unten erfordert einen erneuten Durchlauf.
+
+   Der Prüfer kennt jetzt BEIDE Paletten. Jede Änderung an einem Farbwert
+   unten erfordert einen erneuten Durchlauf — auch an der hellen.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* ─── Schriften, lokal, keine externen Anfragen ─────────────────────────── */
@@ -39,9 +57,11 @@
 }
 
 :root {
+  color-scheme: dark;
+
   /* ═══ Farbe ══════════════════════════════════════════════════════════════
 
-     REGELN (aus tools/check_contrast.py, Abschnitt 4 — bitte einhalten,
+     REGELN (aus tools/check_contrast.py, Abschnitt 5 — bitte einhalten,
      sonst ist der Prüfbericht ungültig):
 
      1. Statusfarbe ist DREISTUFIG: --good / --ok / --bad. Nie eine vierte
@@ -51,14 +71,14 @@
         sie trägt nicht allein.
      3. Kategoriale Datenfarben (--c-…) gehören je einer MESSGRÖSSE, nicht
         einem Zustand. Gewicht ist immer blau, Schlaf immer violett — über
-        alle Screens hinweg.
+        alle Screens und über beide Paletten hinweg.
      4. Schwellen in Charts bleiben Referenzlinien. Position funktioniert
         bei jeder Farbfehlsichtigkeit, Farbe nicht.
      ════════════════════════════════════════════════════════════════════════ */
 
   /* Flächen — grünstichiges Schwarz, nie reines #000 */
   --pitch-900: #0C120F;          /* Seitenhintergrund */
-  --pitch-800: #131C17;          /* Kartenfläche */
+  --pitch-800: #131C17;          /* Kartenfläche (deckende Rückfallebene) */
   --pitch-700: #1B2620;          /* erhöhte Fläche, Eingabefelder */
   --pitch-600: #24322B;          /* Hover, gedrückter Zustand */
 
@@ -114,17 +134,47 @@
   --sodium-500: #FF8A1F;         /* 8.0:1 */
   --sodium-fill: rgba(255, 138, 31, 0.16);
   --sodium-glow: rgba(255, 138, 31, 0.32);
+  --sodium-ink: #180B01;         /* Schrift AUF Natrium */
 
   /* Alter Name, damit nichts still bricht — zeigt auf --bad-500. */
   --redcard-500: var(--bad-500);
 
+  /* ═══ Material ══════════════════════════════════════════════════════════
+
+     Glas ist eine HELLE Fläche mit wenig Deckkraft, kein grauer Kasten.
+     Der Unterschied ist der ganze Punkt: eine graue Fläche legt sich auf
+     den Hintergrund, eine helle mit Deckkraft lässt ihn durchscheinen. */
+
+  --glass: rgba(237, 241, 236, 0.055);        /* Karte */
+  --glass-strong: rgba(237, 241, 236, 0.10);  /* was AUF einer Karte liegt */
+  --glass-edge: rgba(237, 241, 236, 0.10);    /* Materialkante ringsum */
+  --glass-lip: rgba(255, 255, 255, 0.26);     /* Licht auf der Oberkante */
+  --chrome: rgba(11, 17, 14, 0.62);           /* schwebende Leisten */
+
+  --blur-chrome: blur(22px) saturate(180%);
+  --blur-sheet: blur(30px) saturate(180%);
+
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --shadow-float: 0 14px 40px rgba(0, 0, 0, 0.45);
+  --shadow-sheet: 0 -10px 60px rgba(0, 0, 0, 0.6);
+
+  /* Der Verlauf hinter allem: ein warmer Kegel oben rechts, ein kühler Pool
+     unten links. Er liegt FEST, der Inhalt läuft darüber — sonst wäre das
+     Glas kein Glas, sondern nur eine hellere Fläche. */
+  --backdrop:
+    radial-gradient(120% 52% at 78% -8%, rgba(255, 138, 31, 0.18), transparent 62%),
+    radial-gradient(100% 42% at 12% 104%, rgba(110, 231, 183, 0.11), transparent 60%),
+    linear-gradient(180deg, #0E1611 0%, #0C120F 42%, #080D0A 100%);
+
   /* Semantische Aliase */
   --bg: var(--pitch-900);
-  --surface: var(--pitch-800);
-  --surface-raised: var(--pitch-700);
+  --surface: var(--glass);
+  --surface-raised: var(--glass-strong);
+  --surface-solid: var(--pitch-800);   /* wenn wirklich deckend sein muss */
   --ink: var(--chalk-100);
   --ink-muted: var(--chalk-500);
   --accent: var(--sodium-500);
+  --accent-ink: var(--sodium-ink);
 
   /* ═══ Typografie ════════════════════════════════════════════════════════ */
 
@@ -152,6 +202,9 @@
   --leading-snug: 1.3;     /* Überschriften */
   --leading-normal: 1.55;  /* Fließtext */
 
+  /* Laufweite ist GRÖSSENABHÄNGIG, nie ein Wert für alles: große Schrift
+     läuft optisch auseinander und will enger, kleine will Luft. */
+  --track-tight: -0.015em; /* Displayzahlen und große Überschriften */
   --track-wide: 0.08em;    /* Eyebrow-Labels in Versalien */
 
   /* ═══ Maße ══════════════════════════════════════════════════════════════ */
@@ -165,35 +218,162 @@
   --space-8: 2rem;      /* 32px */
   --space-12: 3rem;     /* 48px */
 
-  --radius-sm: 4px;     /* Datenenden von Balken */
-  --radius-md: 10px;    /* Karten, Eingabefelder */
-  --radius-lg: 16px;    /* Bereitschafts-Karte */
-  --radius-xl: 22px;    /* Overlay-Fenster */
+  /* Glas will größere Radien als ein Kasten — eine dünne Materialkante mit
+     10 px Rundung liest sich wie ein Rahmen, mit 18 px wie eine Scheibe. */
+  --radius-sm: 6px;     /* Datenenden von Balken */
+  --radius-md: 16px;    /* Eingabefelder, Knöpfe */
+  --radius-lg: 22px;    /* Karten */
+  --radius-xl: 30px;    /* Overlay-Fenster, schwebende Leisten */
   --radius-pill: 999px;
 
-  /* Overlay-Fenster: Verdunkelung dahinter und Schatten darunter. Ohne beides
-     schwebt das Fenster nicht, sondern klebt am Screen. */
-  --scrim: rgba(6, 10, 8, 0.72);
-  --shadow-sheet: 0 -8px 40px rgba(0, 0, 0, 0.55);
+  --scrim: rgba(4, 8, 6, 0.55);
 
   --tap-min: 48px;      /* Mindestgröße jeder Trefferfläche */
   --content-max: 34rem; /* Lesebreite, zentriert auf großen Displays */
-  --tabbar-h: 56px;
+  --tabbar-h: 58px;
 
   /* iPhone-Notch und Home-Indicator */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  /* ═══ Bewegung ══════════════════════════════════════════════════════════ */
+  /* Höhe der schwebenden Leisten — der Inhalt braucht oben und unten
+     genau so viel Luft, sonst verschwindet er darunter. */
+  --topbar-h: 60px;
+  --tabbar-gap: 12px;
+
+  /* ═══ Bewegung ══════════════════════════════════════════════════════════
+
+     Für alles, was nur ein- oder ausblendet. Was man ANFASSEN kann, läuft
+     nicht über CSS, sondern über Federn in js/views/motion.js: eine
+     CSS-Transition rechnet stur zum Ziel und lässt sich nicht mitten im
+     Flug greifen und umdrehen. */
 
   --ease: cubic-bezier(0.2, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 120ms;
   --dur-med: 240ms;
+  --dur-press: 90ms;    /* Druckrückmeldung — muss sofort sein */
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   HELL — dieselbe App bei Tageslicht.
+
+   Kein invertiertes Dunkel: Glas wird bei Tageslicht HELLER und DICHTER,
+   nicht dunkler. Eine dunkle durchscheinende Fläche auf hellem Grund wirkt
+   wie ein Schatten, nicht wie Material.
+
+   Die Status- und Messgrößenfarben sind eigene Werte, keine gedrehten: das
+   Grün, das auf Schwarz mit 12:1 leuchtet, hat auf Weiß 1.6:1 und wäre
+   unlesbar. Beide Sätze sind in tools/check_contrast.py geprüft.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+[data-theme='light'] {
+  color-scheme: light;
+
+  --pitch-900: #EDF1EA;
+  --pitch-800: #FFFFFF;
+  --pitch-700: #E2E8DF;
+  --pitch-600: #D5DDD1;
+
+  --chalk-100: #0F1611;          /* Primärtext */
+  --chalk-500: #4E5951;          /* Labels, Sekundärtext */
+  --line-200: rgba(15, 22, 17, 0.12);
+  --line-300: rgba(15, 22, 17, 0.22);
+
+  --data-500: #6B7A71;
+
+  --good-500: #017209;
+  --ok-500: #6F3600;
+  --bad-500: #CA0F4D;
+
+  --good-fill: rgba(1, 114, 9, 0.10);
+  --ok-fill: rgba(111, 54, 0, 0.10);
+  --bad-fill: rgba(202, 15, 77, 0.10);
+
+  --good-edge: rgba(1, 114, 9, 0.40);
+  --ok-edge: rgba(111, 54, 0, 0.40);
+  --bad-edge: rgba(202, 15, 77, 0.42);
+
+  --c-weight: #0369A1;
+  --c-sleep: #7C3AED;
+  --c-ready: #017209;
+  --c-kcal: #A8480B;
+  --c-protein: #E50E98;
+  --c-volume: #7C7D0F;
+
+  --m-protein: #E50E98;
+  --m-carbs: #1180B5;
+  --m-fat: #7C7D0F;
+
+  --sodium-500: #A64B06;
+  --sodium-fill: rgba(166, 75, 6, 0.12);
+  --sodium-glow: rgba(166, 75, 6, 0.28);
+  --sodium-ink: #FFFFFF;
+
+  --glass: rgba(255, 255, 255, 0.60);
+  --glass-strong: rgba(255, 255, 255, 0.85);
+  --glass-edge: rgba(15, 22, 17, 0.10);
+  --glass-lip: rgba(255, 255, 255, 0.95);
+  --chrome: rgba(237, 241, 234, 0.68);
+
+  --shadow-card: 0 10px 26px rgba(24, 44, 32, 0.10);
+  --shadow-float: 0 14px 36px rgba(24, 44, 32, 0.16);
+  --shadow-sheet: 0 -10px 50px rgba(24, 44, 32, 0.20);
+
+  --backdrop:
+    radial-gradient(120% 52% at 78% -8%, rgba(255, 138, 31, 0.20), transparent 62%),
+    radial-gradient(100% 42% at 12% 104%, rgba(1, 114, 9, 0.11), transparent 60%),
+    linear-gradient(180deg, #F6F8F3 0%, #EDF1EA 46%, #E1E7DD 100%);
+
+  --scrim: rgba(30, 44, 36, 0.35);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Barrierefreiheit — drei unabhängige Signale, jedes für sich beachtet.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Weniger Bewegung heißt nicht KEINE Rückmeldung, sondern eine sanftere:
+   Überblenden statt Schieben. Die Federn in js/views/motion.js springen
+   dann direkt auf den Zielwert. */
 @media (prefers-reduced-motion: reduce) {
   :root {
     --dur-fast: 0ms;
     --dur-med: 0ms;
+    --dur-press: 0ms;
+  }
+}
+
+/* Weniger Transparenz: Glas wird milchig statt durchsichtig. Die Unschärfe
+   fällt weg, die Deckkraft steigt — dieselbe Struktur, nur dichter. */
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass: var(--pitch-800);
+    --glass-strong: var(--pitch-700);
+    --chrome: var(--pitch-800);
+    --blur-chrome: none;
+    --blur-sheet: none;
+  }
+
+  [data-theme='light'] {
+    --glass: #FFFFFF;
+    --glass-strong: #F2F5F0;
+    --chrome: #FFFFFF;
+  }
+}
+
+/* Mehr Kontrast: nahezu deckende Flächen mit einer definierten Kante. */
+@media (prefers-contrast: more) {
+  :root {
+    --glass: var(--pitch-800);
+    --glass-strong: var(--pitch-700);
+    --glass-edge: var(--line-300);
+    --chrome: var(--pitch-900);
+    --ink-muted: #B3BEB6;
+  }
+
+  [data-theme='light'] {
+    --glass: #FFFFFF;
+    --glass-strong: #FFFFFF;
+    --ink-muted: #333D36;
   }
 }

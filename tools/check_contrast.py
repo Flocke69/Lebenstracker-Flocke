@@ -4,11 +4,16 @@
 Ersetzt den Node-Validator der dataviz-Richtlinie, weil in dieser Umgebung
 kein node installiert ist. Nutzt ausschließlich die Standardbibliothek.
 
-Geprüft wird:
+Geprüft wird — für BEIDE Paletten, dunkel und hell:
   1. WCAG-2.1-Kontrast jeder Textfarbe gegen jede Flächenfarbe
   2. Kontrast der Chart-Marken gegen die Flächen (Grenze 3:1 für Grafik)
   3. OKLab-Abstand der Signalfarben gegeneinander — bei Normalsicht und
      simuliert für Protanopie, Deuteranopie und Tritanopie
+
+Warum beide: seit der Umstellung auf "Flutlicht Glas" kann die App hell.
+Die helle Palette ist kein invertiertes Dunkel, sondern ein eigener Satz
+Werte — ein Grün mit 12:1 auf Schwarz hat auf Weiß 1.6:1. Eine Palette zu
+prüfen und die andere zu raten wäre schlimmer als gar nicht zu prüfen.
 
 Aufruf:  python3 tools/check_contrast.py
 Rückgabe: Exit-Code 1, wenn eine Pflichtprüfung fehlschlägt.
@@ -16,42 +21,76 @@ Rückgabe: Exit-Code 1, wenn eine Pflichtprüfung fehlschlägt.
 
 import sys
 
-# ─── Die Palette (muss mit css/tokens.css übereinstimmen) ────────────────────
+# ─── Die Paletten (müssen mit css/tokens.css übereinstimmen) ─────────────────
 
-SURFACES = {
-    "--pitch-900": "#0C120F",   # Seitenhintergrund
-    "--pitch-800": "#131C17",   # Kartenfläche
-    "--pitch-700": "#1B2620",   # erhöhte Fläche, Eingabefelder
+DARK = {
+    "surfaces": {
+        "--pitch-900": "#0C120F",   # Seitenhintergrund
+        "--pitch-800": "#131C17",   # Kartenfläche
+        "--pitch-700": "#1B2620",   # erhöhte Fläche, Eingabefelder
+    },
+    "text": {
+        "--chalk-100": "#EDF1EC",     # Primärtext
+        "--chalk-500": "#8A968D",     # Labels, Sekundärtext
+        "--sodium-500": "#FF8A1F",    # Bedienelemente, "jetzt dran"
+        "--good-500": "#6EE7B7",      # Statuswort "gut"
+        "--ok-500": "#FBBF24",        # Statuswort "geht so"
+        "--bad-500": "#FF4D6D",       # Statuswort "schlecht"
+    },
+    # Marken in Charts: Grafik, nicht Text → Grenze 3:1.
+    #
+    # --data-500 ist ein reines Grafik-Token und steht bewusst NICHT im
+    # Textsatz: es trägt niemals Schrift.
+    "marks": {
+        "--chalk-100": "#EDF1EC",
+        "--chalk-500": "#8A968D",
+        "--data-500": "#63796F",      # ruhende Balken
+        "--sodium-500": "#FF8A1F",    # hervorgehobener Wert
+        "--c-weight": "#38BDF8",      # Gewicht
+        "--c-sleep": "#D8B4FE",       # Schlaf
+        "--c-ready": "#6EE7B7",       # Bereitschaft
+        "--c-kcal": "#FB923C",        # Kalorien
+        "--c-protein": "#F472B6",     # Protein
+        "--c-volume": "#FACC15",      # Trainingsvolumen
+        "--m-protein": "#F472B6",     # Makro-Balken Protein
+        "--m-carbs": "#22D3EE",       # Makro-Balken Kohlenhydrate
+        "--m-fat": "#FACC15",         # Makro-Balken Fett
+    },
 }
 
-TEXT = {
-    "--chalk-100": "#EDF1EC",     # Primärtext
-    "--chalk-500": "#8A968D",     # Labels, Sekundärtext
-    "--sodium-500": "#FF8A1F",    # Bedienelemente, "jetzt dran"
-    "--good-500": "#6EE7B7",      # Statuswort "gut"
-    "--ok-500": "#FBBF24",        # Statuswort "geht so"
-    "--bad-500": "#FF4D6D",       # Statuswort "schlecht"
+# Hell. Dieselbe Struktur, dieselben Namen, eigene Werte.
+LIGHT = {
+    "surfaces": {
+        "--pitch-900": "#EDF1EA",
+        "--pitch-800": "#FFFFFF",
+        "--pitch-700": "#E2E8DF",
+    },
+    "text": {
+        "--chalk-100": "#0F1611",
+        "--chalk-500": "#4E5951",
+        "--sodium-500": "#A64B06",
+        "--good-500": "#017209",
+        "--ok-500": "#6F3600",
+        "--bad-500": "#CA0F4D",
+    },
+    "marks": {
+        "--chalk-100": "#0F1611",
+        "--chalk-500": "#4E5951",
+        "--data-500": "#6B7A71",
+        "--sodium-500": "#A64B06",
+        "--c-weight": "#0369A1",
+        "--c-sleep": "#7C3AED",
+        "--c-ready": "#017209",
+        "--c-kcal": "#A8480B",
+        "--c-protein": "#E50E98",
+        "--c-volume": "#7C7D0F",
+        "--m-protein": "#E50E98",
+        "--m-carbs": "#1180B5",
+        "--m-fat": "#7C7D0F",
+    },
 }
 
-# Marken in Charts: Grafik, nicht Text → Grenze 3:1.
-#
-# --data-500 ist ein reines Grafik-Token und steht bewusst NICHT in TEXT:
-# es trägt niemals Schrift.
-MARKS = {
-    "--chalk-100": "#EDF1EC",
-    "--chalk-500": "#8A968D",
-    "--data-500": "#63796F",      # ruhende Balken
-    "--sodium-500": "#FF8A1F",    # hervorgehobener Wert
-    "--c-weight": "#38BDF8",      # Gewicht
-    "--c-sleep": "#D8B4FE",       # Schlaf
-    "--c-ready": "#6EE7B7",       # Bereitschaft
-    "--c-kcal": "#FB923C",        # Kalorien
-    "--c-protein": "#F472B6",     # Protein
-    "--c-volume": "#FACC15",      # Trainingsvolumen
-    "--m-protein": "#F472B6",     # Makro-Balken Protein
-    "--m-carbs": "#22D3EE",       # Makro-Balken Kohlenhydrate
-    "--m-fat": "#FACC15",         # Makro-Balken Fett
-}
+PALETTES = [("Dunkel", DARK), ("Hell", LIGHT)]
 
 # Die kategorialen Farben stehen NIE zwei in einem Bild — jeder Chart trägt
 # genau eine Messgröße und einen Titel. Ihr Abstand wird deshalb berichtet,
@@ -114,9 +153,13 @@ SIGNAL_PAIRS = [
     ("--m-carbs", "--m-fat"),
 ]
 
-ALL = dict(SURFACES)
-ALL.update(TEXT)
-ALL.update(MARKS)
+def merged(pal):
+    """Alle benannten Farben einer Palette in einer Tabelle."""
+    out = dict(pal["surfaces"])
+    out.update(pal["text"])
+    out.update(pal["marks"])
+    return out
+
 
 # Grenzwerte
 WCAG_TEXT_AA = 4.5        # Fließtext
@@ -219,49 +262,51 @@ def head(title):
     print("─" * len(title))
 
 
-def check_text():
-    head("1 · WCAG-Kontrast: Text auf Fläche")
+def check_text(pal, tag):
+    head(f"1 · {tag} — WCAG-Kontrast: Text auf Fläche")
     print(f"{'Farbe':<14}{'Fläche':<14}{'Ratio':>8}   Urteil")
-    for tname, thex in TEXT.items():
-        for sname, shex in SURFACES.items():
+    for tname, thex in pal["text"].items():
+        for sname, shex in pal["surfaces"].items():
             ratio = contrast(thex, shex)
             if ratio >= WCAG_TEXT_AA:
                 verdict = "PASS  Fließtext (AA)"
             elif ratio >= WCAG_LARGE_AA:
                 verdict = "PASS  nur große Schrift (AA large)"
                 warnings.append(
-                    f"{tname} auf {sname}: {ratio:.2f}:1 — nur ab 24px "
+                    f"[{tag}] {tname} auf {sname}: {ratio:.2f}:1 — nur ab 24px "
                     f"bzw. 19px bold verwenden"
                 )
             else:
                 verdict = "FAIL"
                 failures.append(
-                    f"{tname} auf {sname}: {ratio:.2f}:1 < {WCAG_LARGE_AA}"
+                    f"[{tag}] {tname} auf {sname}: {ratio:.2f}:1 < {WCAG_LARGE_AA}"
                 )
             print(f"{tname:<14}{sname:<14}{ratio:>7.2f}:1   {verdict}")
 
 
-def check_marks():
-    head("2 · WCAG-Kontrast: Chart-Marken auf Fläche (Grenze 3:1)")
+def check_marks(pal, tag):
+    head(f"2 · {tag} — WCAG-Kontrast: Chart-Marken auf Fläche (Grenze 3:1)")
     print(f"{'Marke':<14}{'Fläche':<14}{'Ratio':>8}   Urteil")
-    for mname, mhex in MARKS.items():
-        for sname, shex in SURFACES.items():
+    for mname, mhex in pal["marks"].items():
+        for sname, shex in pal["surfaces"].items():
             ratio = contrast(mhex, shex)
             ok = ratio >= WCAG_GRAPHIC
             if not ok:
                 failures.append(
-                    f"Marke {mname} auf {sname}: {ratio:.2f}:1 < {WCAG_GRAPHIC}"
+                    f"[{tag}] Marke {mname} auf {sname}: "
+                    f"{ratio:.2f}:1 < {WCAG_GRAPHIC}"
                 )
             print(f"{mname:<14}{sname:<14}{ratio:>7.2f}:1   "
                   f"{'PASS' if ok else 'FAIL'}")
 
 
-def check_pairs():
-    head("3 · OKLab-Abstand der Signalpaare (Normalsicht + CVD)")
+def check_pairs(pal, tag):
+    head(f"3 · {tag} — OKLab-Abstand der Signalpaare (Normalsicht + CVD)")
+    all_colors = merged(pal)
     cols = ["Normal"] + list(CVD.keys())
     print(f"{'Paar':<30}" + "".join(f"{c:>14}" for c in cols) + "   Urteil")
     for a, b in SIGNAL_PAIRS:
-        ha, hb = ALL[a], ALL[b]
+        ha, hb = all_colors[a], all_colors[b]
         normal = delta_e(ha, hb)
         cvds = {k: delta_e(ha, hb, k) for k in CVD}
         label = f"{a} / {b}"
@@ -270,19 +315,21 @@ def check_pairs():
         if normal < DELTA_NORMAL_MIN:
             verdict = "FAIL"
             failures.append(
-                f"{label}: Normalsicht ΔE {normal:.1f} < {DELTA_NORMAL_MIN} — "
-                f"auch Vollfarbsehende unterscheiden das Paar nicht"
+                f"[{tag}] {label}: Normalsicht ΔE {normal:.1f} < "
+                f"{DELTA_NORMAL_MIN} — auch Vollfarbsehende unterscheiden "
+                f"das Paar nicht"
             )
         worst_kind, worst = min(cvds.items(), key=lambda kv: kv[1])
         if worst < DELTA_CVD_FLOOR:
             verdict = "FAIL"
             failures.append(
-                f"{label}: {worst_kind} ΔE {worst:.1f} < {DELTA_CVD_FLOOR}"
+                f"[{tag}] {label}: {worst_kind} ΔE {worst:.1f} < "
+                f"{DELTA_CVD_FLOOR}"
             )
         elif worst < DELTA_CVD_TARGET and verdict == "PASS":
             verdict = "OK*"
             warnings.append(
-                f"{label}: {worst_kind} ΔE {worst:.1f} < Ziel "
+                f"[{tag}] {label}: {worst_kind} ΔE {worst:.1f} < Ziel "
                 f"{DELTA_CVD_TARGET} — nur zulässig mit zweitem Encoding "
                 f"(Wort oder Symbol), das die App immer mitliefert"
             )
@@ -292,7 +339,7 @@ def check_pairs():
         print(row + f"   {verdict}")
 
 
-def check_categories():
+def check_categories(pal, tag):
     """Abstand der Messgrößen-Farben — Bericht, keine Pflichtprüfung.
 
     Diese Farben stehen nie zwei in einem Bild. Ein Zusammenfall bei
@@ -300,12 +347,14 @@ def check_categories():
     ihren Titel trägt. Die Zahlen stehen trotzdem hier: wer später zwei
     Messgrößen in EINEN Chart legt, muss vorher hier nachsehen.
     """
-    head("4 · Abstand der Messgrößen-Farben (informativ, nie im selben Bild)")
+    head(f"4 · {tag} — Abstand der Messgrößen-Farben "
+         f"(informativ, nie im selben Bild)")
+    all_colors = merged(pal)
     cols = ["Normal"] + list(CVD.keys())
     print(f"{'Paar':<30}" + "".join(f"{c:>14}" for c in cols) + "   Hinweis")
     for i, a in enumerate(CATEGORY):
         for b in CATEGORY[i + 1:]:
-            ha, hb = ALL[a], ALL[b]
+            ha, hb = all_colors[a], all_colors[b]
             normal = delta_e(ha, hb)
             cvds = {k: delta_e(ha, hb, k) for k in CVD}
             worst_kind, worst = min(cvds.items(), key=lambda kv: kv[1])
@@ -329,10 +378,14 @@ def show_rules():
 def main():
     print("Flutlicht-Palette — Prüfbericht")
     print("=" * 34)
-    check_text()
-    check_marks()
-    check_pairs()
-    check_categories()
+    for tag, pal in PALETTES:
+        print("\n" + "█" * 60)
+        print(f"█  PALETTE: {tag.upper()}")
+        print("█" * 60)
+        check_text(pal, tag)
+        check_marks(pal, tag)
+        check_pairs(pal, tag)
+        check_categories(pal, tag)
     show_rules()
 
     head("Ergebnis")

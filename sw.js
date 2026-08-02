@@ -44,9 +44,13 @@
  *   v18 Review ohne Fragen: ein Urteil oben, vier Themenfenster mit Grafik
  *       darunter, Erinnerung an den Yazio-Wochenschnitt am Sonntag
  *   v19 Die Erinnerungen stehen unter der Trainingskarte, nicht darueber
+ *   v20 "Flutlicht Glas": schwebende Leisten aus Glas, unter denen der Inhalt
+ *       durchlaeuft, Federn statt Uebergaenge (js/lib/motion.js), Fenster mit
+ *       1:1-Zug und Impulsprojektion, gleitende Kapseln in Tab-Bar und
+ *       Wochenband, dazu eine geprueft helle Palette und ein Umschalter
  */
 
-const CACHE_VERSION = 'v19';
+const CACHE_VERSION = 'v20';
 const CACHE_NAME = `lebenstracker-${CACHE_VERSION}`;
 
 const PRECACHE = [
@@ -62,6 +66,7 @@ const PRECACHE = [
   './js/lib/archive.js',
   './js/lib/dates.js',
   './js/lib/energy.js',
+  './js/lib/motion.js',
   './js/lib/planner.js',
   './js/lib/readiness.js',
   './js/lib/review.js',
@@ -77,12 +82,14 @@ const PRECACHE = [
   './js/views/clock.js',
   './js/views/dom.js',
   './js/views/gauge.js',
+  './js/views/motion.js',
   './js/views/nutrition.js',
   './js/views/onboarding.js',
   './js/views/profile.js',
   './js/views/review.js',
   './js/views/session.js',
   './js/views/sheet.js',
+  './js/views/theme.js',
   './js/views/today.js',
   './js/views/training.js',
   './js/views/trends.js',

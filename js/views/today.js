@@ -44,6 +44,7 @@ import { checkinSummary, openCheckin } from './checkin.js';
 import { openSession } from './session.js';
 import { openSheet, closeSheet } from './sheet.js';
 import { readinessArc, factorBars } from './gauge.js';
+import { Spring } from './motion.js';
 import {
   el, replace, dec, setWord, decimalInput, parseDecimal, toInputValue,
 } from './dom.js';
@@ -58,14 +59,66 @@ import {
  * Krafteinheit, erledigt. Farbe UND Form, damit die Marke nicht allein an der
  * Farbe hängt.
  */
+/* Die gleitende Kapsel hinter dem gezeigten Tag.
+ *
+ * Sie liegt im Modul und nicht in der Funktion: die App zeichnet bei jeder
+ * Eingabe alles neu, und eine Feder, die dabei jedes Mal neu entstünde, wäre
+ * bei jedem Tastendruck wieder am Anfang. Genau dieselbe Bauart wie die
+ * Kapsel der Tab-Bar in js/app.js.
+ */
+let bandCapsule = null;
+let bandPainted = null;
+const bandX = new Spring(0, { damping: 0.9, response: 0.34, onChange: paintBandCapsule });
+const bandW = new Spring(0, { damping: 0.9, response: 0.34, onChange: paintBandCapsule });
+
+function paintBandCapsule() {
+  if (!bandCapsule?.isConnected) return;
+  bandCapsule.style.transform = `translate3d(${bandX.x.toFixed(2)}px, 0, 0)`;
+  bandCapsule.style.width = `${bandW.x.toFixed(2)}px`;
+}
+
+/**
+ * Die Kapsel neu einmessen, ohne neu zu zeichnen.
+ *
+ * Nötig beim Drehen des Geräts: die Kapsel kennt ihren Platz nur in Pixeln,
+ * und die stimmen nach einer Breitenänderung nicht mehr. Ein vollständiges
+ * Neuzeichnen wäre der einfachere Weg und der falsche — auf iOS löst auch
+ * die eingeblendete Tastatur ein resize aus, und dabei darf das Feld, in das
+ * gerade getippt wird, nicht verschwinden.
+ */
+export function relayoutWeekband() {
+  const band = document.querySelector('.weekband');
+  const day = band?.querySelector('.weekband__day--shown');
+  if (!band || !day || !bandCapsule?.isConnected) return;
+  bandX.set(day.offsetLeft);
+  bandW.set(day.offsetWidth);
+}
+
+function placeBandCapsule(band, shownKey) {
+  const day = band.querySelector('.weekband__day--shown');
+  if (!day || !bandCapsule) return;
+  /* Ohne Bewegung, wenn nur neu gezeichnet wurde — sonst liefe bei jedem
+     Tastendruck im Gewichtsfeld eine Animation los. */
+  const instant = bandPainted === shownKey || bandW.x === 0;
+  bandPainted = shownKey;
+  if (instant) {
+    bandX.set(day.offsetLeft);
+    bandW.set(day.offsetWidth);
+  } else {
+    bandX.to(day.offsetLeft);
+    bandW.to(day.offsetWidth);
+  }
+}
+
 function weekband(state, shownKey, navigateDay) {
   const today = todayKey();
   const plan = weekPlan(state, shownKey);
   const byDay = new Map(plan.filter((p) => p.dayKey).map((p) => [p.dayKey, p]));
 
-  return el('div', null,
-    el('div', { class: 'weekband' },
-      weekKeys(shownKey).map((key) => {
+  bandCapsule = el('div', { class: 'weekband__capsule', 'aria-hidden': 'true' });
+  const band = el('div', { class: 'weekband' },
+    bandCapsule,
+    weekKeys(shownKey).map((key) => {
         const weekday = weekdayOf(key);
         const day = getDay(state, key);
         const isShown = key === shownKey;
@@ -99,7 +152,14 @@ function weekband(state, shownKey, navigateDay) {
           el('span', {
             class: `weekband__mark${markClass ? ` weekband__mark--${markClass}` : ''}`,
           }));
-      })),
+      }));
+
+  /* Nach dem Einhängen, nicht davor: offsetLeft kennt der Browser erst,
+     wenn das Element im Dokument steht. */
+  requestAnimationFrame(() => placeBandCapsule(band, shownKey));
+
+  return el('div', null,
+    band,
     el('div', { class: 'weekband__legend' },
       el('span', { class: 'legend legend--match', text: 'Spiel' }),
       el('span', { class: 'legend legend--team', text: 'Mannschaft' }),
